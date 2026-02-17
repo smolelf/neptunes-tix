@@ -1,14 +1,18 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // Ticket is the core data of your app
 type Ticket struct {
-	ID          uint       `gorm:"primaryKey" json:"id"`
+	gorm.Model
 	EventName   string     `json:"event_name"`
+	Category    string     `json:"category"`
 	Price       float64    `json:"price"`
 	IsSold      bool       `json:"is_sold" gorm:"default:false"`
-	CreatedAt   time.Time  `json:"created_at"`
 	UserID      *uint      `json:"user_id"`
 	CheckedInAt *time.Time `json:"checked_in_at"`
 }
@@ -16,24 +20,12 @@ type Ticket struct {
 // TicketRepository is a "Contract"
 // It says: "Whatever database we use must have these functions"
 type TicketRepository interface {
-	Create(ticket *Ticket) error
-	GetAll(limit int, offset int) ([]Ticket, int64, error)
+	CreateTicket(ticket *Ticket) error // Must be CreateTicket
+	UpdateTicket(ticket *Ticket) error
+	GetAll(limit int, offset int, category string, available bool) ([]Ticket, int64, error)
 	GetByID(id string) (*Ticket, error)
-	Update(ticket *Ticket) error
 	Delete(id string) error
-
-	CreateUser(user *User) error
-	GetUserWithTickets(id string) (*User, error)
-	GetUserByEmail(email string) (*User, error)
-	SearchCustomerByName(name string) ([]User, error)
-	UpdateUser(user *User) error
-}
-
-type User struct {
-	ID       uint     `gorm:"primaryKey" json:"id"`
-	Name     string   `json:"name"`
-	Email    string   `gorm:"unique" json:"email"`
-	Password string   `json:"-"`                              // Hide this from JSON
-	Role     string   `json:"role" gorm:"default:'customer'"` // 'admin', 'agent', 'customer'
-	Tickets  []Ticket `json:"tickets,omitempty"`              //array of tickets
+	GetStats() (map[string]interface{}, error)
+	GetUserTickets(userID uint) ([]Ticket, error)
+	Transaction(fn func(txRepo TicketRepository) error) error
 }

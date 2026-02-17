@@ -46,20 +46,22 @@ func main() {
 
 	// Initialize our layers
 	repo := repository.NewMySQLRepo(db)
-	ticketSvc := service.NewTicketService(repo)
+	bookingSvc := service.NewBookingService(repo, repo)
 
 	r := gin.Default()
 
 	// GET Route to see all tickets
 	r.GET("/tickets", func(c *gin.Context) {
-		limitStr := c.DefaultQuery("limit", "10")
-		offsetStr := c.DefaultQuery("offset", "0")
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-		limit, _ := strconv.Atoi(limitStr)
-		offset, _ := strconv.Atoi(offsetStr)
+		// Get the new filter parameters
+		category := c.Query("category")
+		status := c.Query("status")
+		onlyAvailable := (status == "available")
 
-		// Note the new 'total' variable here
-		tickets, total, err := repo.GetAll(limit, offset)
+		// UPDATE: Pass all 4 arguments now!
+		tickets, total, err := bookingSvc.ListTickets(limit, offset, category, onlyAvailable)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Failed to fetch tickets"})
 			return
@@ -75,33 +77,39 @@ func main() {
 	})
 
 	// POST Route to create a new ticket
-	r.POST("/tickets", middleware.AuthRequired(), middleware.RolesRequired("admin", "agent"), func(c *gin.Context) {
-		var input struct {
-			EventName string  `json:"event_name" binding:"required"`
-			Price     float64 `json:"price" binding:"required"`
-		}
+	r.POST("/tickets",
+		middleware.AuthRequired(),
+		middleware.RolesRequired("admin", "agent"),
+		func(c *gin.Context) {
+			var input struct {
+				EventName string  `json:"event_name" binding:"required,min=3"`
+				Category  string  `json:"category" binding:"required"`
+				Price     float64 `json:"price" binding:"required,gt=0"`
+			}
 
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
+			// This line performs the validation check!
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
 
-		ticket, err := ticketSvc.CreateTicket(input.EventName, input.Price)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Could not create ticket"})
-			return
-		}
+			ticket, err := bookingSvc.CreateTicket(input.EventName, input.Category, input.Price)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Could not create ticket"})
+				return
+			}
 
-		c.JSON(201, ticket)
-	})
+			c.JSON(201, ticket)
+		})
 
+	//PATCH Route to check-in a ticket
 	r.PATCH("/tickets/:id/checkin",
 		middleware.AuthRequired(),
 		middleware.RolesRequired("agent", "admin"),
 		func(c *gin.Context) {
 			id := c.Param("id")
 
-			err := ticketSvc.CheckInTicket(id)
+			err := bookingSvc.CheckInTicket(id)
 			if err != nil {
 				c.JSON(400, gin.H{"error": err.Error()})
 				return
@@ -111,14 +119,17 @@ func main() {
 		},
 	)
 
-	r.DELETE("/tickets/:id", middleware.AuthRequired(), middleware.RolesRequired("admin"), func(c *gin.Context) {
-		id := c.Param("id")
-		if err := ticketSvc.RemoveTicket(id); err != nil {
-			c.JSON(500, gin.H{"error": "Failed to delete"})
-			return
-		}
-		c.JSON(200, gin.H{"message": "Ticket deleted"})
-	})
+	r.DELETE("/tickets/:id",
+		middleware.AuthRequired(),
+		middleware.RolesRequired("admin"),
+		func(c *gin.Context) {
+			id := c.Param("id")
+			if err := bookingSvc.RemoveTicket(id); err != nil {
+				c.JSON(500, gin.H{"error": "Failed to delete"})
+				return
+			}
+			c.JSON(200, gin.H{"message": "Ticket deleted"})
+		})
 
 	// 1. Route to Create a User
 	r.POST("/users", func(c *gin.Context) {
@@ -135,7 +146,7 @@ func main() {
 		}
 
 		// Now passing the password to the service
-		user, err := ticketSvc.CreateUser(input.Name, input.Email, input.Password, input.Role)
+		user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, input.Role)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Could not create user"})
 			return
@@ -144,28 +155,30 @@ func main() {
 		c.JSON(201, user)
 	})
 
-	r.POST("/bookings", middleware.AuthRequired(), func(c *gin.Context) {
-		var input struct {
-			TicketID string `json:"ticket_id" binding:"required"`
-		}
+	r.POST("/bookings",
+		middleware.AuthRequired(),
+		func(c *gin.Context) {
+			var input struct {
+				TicketID string `json:"ticket_id" binding:"required"`
+			}
 
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
 
-		// 2. Get User ID from the token (extracted by middleware)
-		userID := c.MustGet("userID").(uint)
-		userName := c.GetString("userName")
+			// 2. Get User ID from the token (extracted by middleware)
+			userID := c.MustGet("userID").(uint)
+			userName := c.GetString("userName")
 
-		err := ticketSvc.BookTicket(input.TicketID, userID)
-		if err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
+			err := bookingSvc.BookTicket(input.TicketID, userID)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
 
-		c.JSON(200, gin.H{"message": "Ticket booked successfully for " + userName + " (" + fmt.Sprint(userID) + ")"})
-	})
+			c.JSON(200, gin.H{"message": "Ticket booked successfully for " + userName + " (" + fmt.Sprint(userID) + ")"})
+		})
 
 	// Route to View User Profile with their Tickets
 	r.GET("/users/:id", func(c *gin.Context) {
@@ -192,7 +205,7 @@ func main() {
 			return
 		}
 
-		token, err := ticketSvc.Login(input.Email, input.Password)
+		token, err := bookingSvc.Login(input.Email, input.Password)
 		if err != nil {
 			c.JSON(401, gin.H{"error": "Unauthorized"})
 			return
@@ -240,7 +253,7 @@ func main() {
 				return
 			}
 
-			err := ticketSvc.AdminUpdateUser(id, input.Name, input.Email, input.Role)
+			err := bookingSvc.AdminUpdateUser(id, input.Name, input.Email, input.Role)
 			if err != nil {
 				c.JSON(400, gin.H{"error": "Update failed"})
 				return
@@ -248,6 +261,51 @@ func main() {
 
 			c.JSON(200, gin.H{"message": "User updated successfully"})
 		})
+
+	r.GET("/admin/dashboard", middleware.AuthRequired(), middleware.RolesRequired("admin", "agent"), func(c *gin.Context) {
+		stats, err := repo.GetStats()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to load dashboard"})
+			return
+		}
+		c.JSON(200, stats)
+	})
+
+	r.GET("/my-tickets", middleware.AuthRequired(), func(c *gin.Context) {
+		// Extract ID from the JWT context we set in middleware
+		userID := c.MustGet("userID").(uint)
+
+		tickets, err := repo.GetUserTickets(userID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Could not retrieve your tickets"})
+			return
+		}
+		c.JSON(200, tickets)
+	})
+
+	r.PUT("/my-profile", middleware.AuthRequired(), func(c *gin.Context) {
+		// Pull the ID from the context (set by AuthRequired middleware)
+		userID := c.MustGet("userID").(uint)
+
+		var input struct {
+			Name  string `json:"name"`
+			Email string `json:"email" binding:"omitempty,email"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid input: " + err.Error()})
+			return
+		}
+
+		// Call our service
+		err := bookingSvc.UpdateOwnProfile(userID, input.Name, input.Email)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Could not update profile"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "Profile updated successfully!"})
+	})
 
 	r.Run(":8080")
 }
