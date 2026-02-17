@@ -117,10 +117,11 @@ func (s *BookingService) Login(email, password string) (string, error) {
 
 	// 3. Create JWT Token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":   user.ID,
-		"user_role": user.Role, // Add this!
-		"user_name": user.Name,
-		"exp":       time.Now().Add(time.Hour * 72).Unix(),
+		"user_id":    user.ID,
+		"user_role":  user.Role, // Add this!
+		"user_name":  user.Name,
+		"user_email": user.Email,
+		"exp":        time.Now().Add(time.Hour * 72).Unix(),
 	})
 
 	// 4. Sign the token with our secret

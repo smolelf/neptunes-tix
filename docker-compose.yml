@@ -10,3 +10,18 @@ services:
       MYSQL_DATABASE: neptunes_tix
     ports:
       - "3306:3306"
+
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: neptunes_pg
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: neptunes_tix
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

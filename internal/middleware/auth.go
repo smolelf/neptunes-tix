@@ -44,6 +44,7 @@ func AuthRequired() gin.HandlerFunc {
 			c.Set("userID", uint(claims["user_id"].(float64)))
 			c.Set("userRole", claims["user_role"].(string)) // Store role in context for later use
 			c.Set("userName", claims["user_name"].(string))
+			c.Set("userEmail", claims["user_email"].(string))
 		}
 
 		c.Next()

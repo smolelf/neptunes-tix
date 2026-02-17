@@ -6,8 +6,6 @@ import (
 	"neptunes-tix/internal/repository"
 	"neptunes-tix/internal/service"
 
-	//"net/http"
-
 	"fmt"
 	"log"
 	"os"
@@ -15,8 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+
+	"gorm.io/driver/postgres"
 )
 
 func main() {
@@ -26,6 +25,7 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	/* MySQL Start
 	// 2. Build the DSN using environment variables
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		os.Getenv("DB_USER"),
@@ -43,10 +43,32 @@ func main() {
 	fmt.Println("✅ Connected securely using Environment Variables!")
 
 	db.AutoMigrate(&domain.User{}, &domain.Ticket{})
+	MySQL End */
 
+	// Migrate to PostgreSQL (Conxn Block)
+	// sslmode=disable is fine for local dev. In production, you'd use 'verify-full'
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Kuala_Lumpur",
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASS"),
+		os.Getenv("DB_NAME"),
+		os.Getenv("DB_PORT"),
+	)
+
+	// OPEN POSTGRES instead of MYSQL
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to PostgreSQL:", err)
+	}
+
+	fmt.Println("🐘 Success! Connected to PostgreSQL.")
+
+	// AutoMigrate will now build your tables in Postgres automatically
+	db.AutoMigrate(&domain.User{}, &domain.Ticket{})
 	// Initialize our layers
 	repo := repository.NewMySQLRepo(db)
 	bookingSvc := service.NewBookingService(repo, repo)
+	// End of PostgreSQL Conxn block
 
 	r := gin.Default()
 
