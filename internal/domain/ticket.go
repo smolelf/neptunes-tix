@@ -22,7 +22,7 @@ type Ticket struct {
 type TicketRepository interface {
 	CreateTicket(ticket *Ticket) error // Must be CreateTicket
 	UpdateTicket(ticket *Ticket) error
-	GetAll(limit int, offset int, category string, available bool) ([]Ticket, int64, error)
+	GetAll(limit int, offset int, category string, available bool, search string) ([]Ticket, int64, error)
 	GetByID(id string) (*Ticket, error)
 	Delete(id string) error
 	GetStats() (map[string]interface{}, error)

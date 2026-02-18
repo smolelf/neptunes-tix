@@ -1,8 +1,11 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useCallback } from 'react';
 import { ThemeContext } from '../context/ThemeContext'; // Import your context
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, Button, Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
+import { TextInput } from 'react-native';
+import { debounce } from 'lodash';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Ticket {
     ID: number;
@@ -20,11 +23,12 @@ interface TicketResponse {
   }
 
 export default function TicketListScreen() {
-  const { colors } = useContext(ThemeContext);
+  const { colors, isDark } = useContext(ThemeContext);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<any>(null); // For the modal
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchTickets(); // Or fetchMyTickets() for the wallet
@@ -35,17 +39,32 @@ export default function TicketListScreen() {
     fetchTickets();
   }, []);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (query: string = '') => {
     try {
-      // Calling your Go endpoint: GET /tickets
-      const response = await apiClient.get<TicketResponse>('/tickets');
-      setTickets(response.data.data); // Based on your Go JSON structure
+      setLoading(true);
+      // Pass the search term to your new Go 'q' parameter
+      const response = await apiClient.get<TicketResponse>(`/tickets?q=${query}`);
+      setTickets(response.data.data);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
+  const debouncedSearch = useCallback(
+    debounce((nextValue: string) => fetchTickets(nextValue), 500),
+    []
+  );
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    debouncedSearch(text);
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, []);
 
   const handlePurchase = async () => {
     try {
@@ -70,20 +89,33 @@ export default function TicketListScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={[styles.header, { color: colors.text }]}>Tickets Available</Text>
+        
+        <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Ionicons name="search" size={20} color={colors.subText} style={{ marginRight: 10 }} />
+            <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search events..."
+            placeholderTextColor={colors.subText}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            clearButtonMode="while-editing" // iOS specific: adds an 'X' button
+            />
+        </View>
+        
         <FlatList
             data={tickets}
-            keyExtractor={(item: any) => item.ID.toString()}
+            keyExtractor={(item) => item.ID.toString()}
             renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={[styles.card, { backgroundColor: colors.card }]} 
+            <TouchableOpacity 
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]} 
                 onPress={() => setSelectedTicket(item)}
-              >
+            >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.event, { color: colors.text }]}>{item.event_name}</Text>
-                  <Text style={[styles.category, { color: colors.subText }]}>{item.category}</Text>
+                <Text style={[styles.event, { color: colors.text }]}>{item.event_name}</Text>
+                <Text style={[styles.category, { color: colors.subText }]}>{item.category}</Text>
                 </View>
                 <Text style={styles.price}>RM{item.price}</Text>
-              </TouchableOpacity>
+            </TouchableOpacity>
             )}
             refreshing={refreshing}
             onRefresh={onRefresh}
@@ -151,6 +183,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        height: 50,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 20,
+      },
+      searchInput: {
+        flex: 1,
+        fontSize: 16,
+      },
     modalContent: {
         width: '85%',
         backgroundColor: '#fff',

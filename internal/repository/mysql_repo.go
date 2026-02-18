@@ -37,19 +37,33 @@ func (m *mysqlRepo) GetUserWithTickets(id string) (*domain.User, error) {
 	return &user, err
 }
 
-func (m *mysqlRepo) GetAll(limit int, offset int, category string, available bool) ([]domain.Ticket, int64, error) {
+func (m *mysqlRepo) GetAll(limit, offset int, category string, available bool, search string) ([]domain.Ticket, int64, error) {
 	var tickets []domain.Ticket
 	var total int64
 
-	// 1. Count total records (ignoring limit/offset)
-	m.db.Model(&domain.Ticket{}).Count(&total)
+	query := m.db.Model(&domain.Ticket{})
 
-	// 2. Get the actual data
-	if limit <= 0 {
-		limit = 10
+	// --- NEW: Search Filter ---
+	if search != "" {
+		// ILIKE is case-insensitive in Postgres. For MySQL, use LIKE.
+		// %search% finds the term anywhere in the event name
+		searchTerm := "%" + search + "%"
+		query = query.Where("event_name ILIKE ?", searchTerm)
 	}
-	err := m.db.Limit(limit).Offset(offset).Find(&tickets).Error
 
+	// Existing filters
+	if category != "" {
+		query = query.Where("category = ?", category)
+	}
+	if available {
+		query = query.Where("is_sold = ?", false)
+	}
+
+	// Get total count for pagination
+	query.Count(&total)
+
+	// Get the actual data
+	err := query.Limit(limit).Offset(offset).Find(&tickets).Error
 	return tickets, total, err
 }
 

@@ -77,19 +77,19 @@ func main() {
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-		// Get the new filter parameters
+		// 1. Grab the search query 'q'
+		search := c.Query("q")
 		category := c.Query("category")
 		status := c.Query("status")
 		onlyAvailable := (status == "available")
 
-		// UPDATE: Pass all 4 arguments now!
-		tickets, total, err := bookingSvc.ListTickets(limit, offset, category, onlyAvailable)
+		// 2. Pass the 'search' variable as the 5th argument
+		tickets, total, err := bookingSvc.ListTickets(limit, offset, category, onlyAvailable, search)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Failed to fetch tickets"})
 			return
 		}
 
-		// Send the "Wrapped" response
 		c.JSON(200, gin.H{
 			"total":  total,
 			"limit":  limit,

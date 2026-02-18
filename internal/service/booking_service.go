@@ -28,9 +28,8 @@ func NewBookingService(tRepo domain.TicketRepository,
 	}
 }
 
-func (s *BookingService) ListTickets(limit, offset int, category string, available bool) ([]domain.Ticket, int64, error) {
-	// You must pass the new parameters we added for filtering!
-	return s.ticketRepo.GetAll(limit, offset, category, available)
+func (s *BookingService) ListTickets(limit, offset int, category string, available bool, search string) ([]domain.Ticket, int64, error) {
+	return s.ticketRepo.GetAll(limit, offset, category, available, search)
 }
 
 func (s *BookingService) RemoveTicket(id string) error {
