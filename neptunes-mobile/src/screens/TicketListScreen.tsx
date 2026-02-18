@@ -4,9 +4,24 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, 
 import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
 
+interface Ticket {
+    ID: number;
+    event_name: string;
+    category: string;
+    price: number;
+    is_sold: boolean;
+  }
+
+interface TicketResponse {
+    total: number;
+    limit: number;
+    offset: number;
+    data: Ticket[];
+  }
+
 export default function TicketListScreen() {
   const { colors } = useContext(ThemeContext);
-  const [tickets, setTickets] = useState([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<any>(null); // For the modal
   const [refreshing, setRefreshing] = useState(false);
@@ -23,7 +38,7 @@ export default function TicketListScreen() {
   const fetchTickets = async () => {
     try {
       // Calling your Go endpoint: GET /tickets
-      const response = await apiClient.get('/tickets');
+      const response = await apiClient.get<TicketResponse>('/tickets');
       setTickets(response.data.data); // Based on your Go JSON structure
     } catch (error) {
       console.error(error);
@@ -70,6 +85,8 @@ export default function TicketListScreen() {
                 <Text style={styles.price}>RM{item.price}</Text>
               </TouchableOpacity>
             )}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
         />
 
         {/* --- PURCHASE MODAL --- */}

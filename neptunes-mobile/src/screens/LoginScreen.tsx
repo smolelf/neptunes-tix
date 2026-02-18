@@ -5,7 +5,9 @@ import { ThemeContext } from '../context/ThemeContext'; // Import this
 import { StatusBar } from 'expo-status-bar';
 import apiClient from '../api/client';
 
-
+interface LoginResponse {
+    token: string;
+  }
 
 // 1. Accept the 'navigation' prop
 export default function LoginScreen({ navigation }: any) { 
@@ -16,7 +18,7 @@ export default function LoginScreen({ navigation }: any) {
 
     const handleLogin = async () => {
         try {
-          const response = await apiClient.post('/login', { email, password });
+          const response = await apiClient.post<LoginResponse>('/login', { email, password });
           const { token } = response.data;
       
           await login(token); 

@@ -110,7 +110,7 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <SafeAreaProvider> {/* <--- FIXED: Must wrap everything for insets to work */}
+    <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
           <AppNavigator />

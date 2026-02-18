@@ -7,7 +7,8 @@ export const ThemeContext = createContext({
       background: '#fff', 
       text: '#000', 
       card: '#f9f9f9',
-      subText: '#8e8e93' // <--- Add this line!
+      subText: '#8e8e93', // <--- Add this line!
+      border: '#ddd',
     },
     toggleTheme: () => {},
   });
@@ -23,6 +24,7 @@ export const ThemeProvider = ({ children }: any) => {
     text: isDark ? '#ffffff' : '#1c1c1e',
     card: isDark ? '#1e1e1e' : '#ffffff',
     subText: isDark ? '#a1a1a1' : '#8e8e93', // <--- And this one!
+    border: isDark ? '#333' : '#ddd',
   };
 
   return (

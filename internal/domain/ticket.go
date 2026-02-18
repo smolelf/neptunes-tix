@@ -29,3 +29,11 @@ type TicketRepository interface {
 	GetUserTickets(userID uint) ([]Ticket, error)
 	Transaction(fn func(txRepo TicketRepository) error) error
 }
+
+// Response structure for the stats
+type TicketStats struct {
+	TotalSold    int    `json:"total_sold"`
+	CheckedIn    int    `json:"checked_in_at"`
+	Remaining    int    `json:"remaining"`
+	LastScanTime string `json:"last_scan_time,omitempty"`
+}

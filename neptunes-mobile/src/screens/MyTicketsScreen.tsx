@@ -7,9 +7,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useContext } from 'react';
 import { ThemeContext } from '../context/ThemeContext';
 
+interface Ticket {
+    ID: number;
+    event_name: string;
+    category: string;
+    is_sold: boolean;
+    checked_in_at: string | null; // Null if not used yet
+  }
+
 export default function MyTicketsScreen() {
   const { colors, isDark} = useContext(ThemeContext);
-  const [myTickets, setMyTickets] = useState([]);
+  const [myTickets, setMyTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -28,7 +36,7 @@ export default function MyTicketsScreen() {
       const token = await SecureStore.getItemAsync('userToken');
       
       // 2. Send request with Authorization Header
-      const response = await apiClient.get('/my-tickets', {
+      const response = await apiClient.get<Ticket[]>('/my-tickets', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
