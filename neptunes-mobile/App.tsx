@@ -16,6 +16,8 @@ import TicketListScreen from './src/screens/TicketListScreen';
 import MyTicketsScreen from './src/screens/MyTicketsScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import OrderDetailsScreen from './src/screens/OrderDetailsScreen'; // Ensure this file exists at src/screens/OrderDetailsScreen.tsx
+
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -53,13 +55,20 @@ function MainTabs() {
           return <Ionicons name={iconName} size={size} color={color} />;
         },
 
-        headerTitle: () => (
-          <View style={{ marginLeft: 10 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
-              Welcome, {displayName}! 👋
-            </Text>
-          </View>
-        )
+        headerTitle: (props) => {
+          // If we are on Marketplace, show the welcome message
+          if (route.name === 'Marketplace') {
+            return (
+              <View style={{ marginLeft: 10 }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
+                  Welcome, {displayName}! 👋
+                </Text>
+              </View>
+            );
+          }
+          // For other tabs, use the default title (Marketplace, Wallet, etc.)
+          return <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>{route.name}</Text>;
+        }
       })}
     >
       <Tab.Screen name="Marketplace" component={TicketListScreen} />
@@ -83,8 +92,8 @@ function AppNavigator() {
     colors: {
       ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
       primary: '#007AFF',
-      background: colors.background,
-      card: colors.background,
+      background: colors.background, // Ensure this matches exactly
+      card: colors.background,       // This is the background of the "cards" during transitions
       text: colors.text,
       border: isDark ? '#333' : '#eee',
     },
@@ -102,6 +111,15 @@ function AppNavigator() {
           name="Home" 
           component={MainTabs} 
           options={{ headerShown: false }} 
+        />
+        <Stack.Screen 
+          name="OrderDetails" 
+          component={OrderDetailsScreen} 
+          options={{ 
+            title: 'Your Tickets',
+            // This forces the 'canvas' behind the screen to match your theme
+            contentStyle: { backgroundColor: colors.background } 
+          }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

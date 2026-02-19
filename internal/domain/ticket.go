@@ -6,15 +6,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// Ticket is the core data of your app
+type Order struct {
+	gorm.Model
+	UserID      uint     `json:"user_id"`
+	TotalAmount float64  `json:"total_amount"`
+	Status      string   `json:"status"`  // e.g., "completed", "cancelled"
+	Tickets     []Ticket `json:"tickets"` // GORM will automatically link these
+}
+
 type Ticket struct {
 	gorm.Model
 	EventName   string     `json:"event_name"`
 	Category    string     `json:"category"`
 	Price       float64    `json:"price"`
 	IsSold      bool       `json:"is_sold" gorm:"default:false"`
-	UserID      *uint      `json:"user_id"`
+	OrderID     *uint      `json:"order_id"`
 	CheckedInAt *time.Time `json:"checked_in_at"`
+	Stock       int        `json:"stock" gorm:"-"`
 }
 
 // TicketRepository is a "Contract"
@@ -28,6 +36,12 @@ type TicketRepository interface {
 	GetStats() (map[string]interface{}, error)
 	GetUserTickets(userID uint) ([]Ticket, error)
 	Transaction(fn func(txRepo TicketRepository) error) error
+	CreateOrder(order *Order) error
+	GetAvailableSequential(eventName string, category string, limit int) ([]Ticket, error)
+	UpdateTicketBatch(tickets []Ticket) error
+	GetMarketplace(search string) ([]Ticket, error)
+	GetUserOrders(userID uint) ([]Order, error)
+	GetOrderWithTickets(orderID string, userID uint) (Order, error)
 }
 
 // Response structure for the stats

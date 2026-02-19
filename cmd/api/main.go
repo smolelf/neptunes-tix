@@ -64,9 +64,11 @@ func main() {
 	fmt.Println("🐘 Success! Connected to PostgreSQL.")
 
 	// AutoMigrate will now build your tables in Postgres automatically
-	db.AutoMigrate(&domain.User{}, &domain.Ticket{})
+	// db.AutoMigrate(&domain.User{}, &domain.Ticket{})
+	db.AutoMigrate(&domain.User{}, &domain.Ticket{}, &domain.Order{})
+
 	// Initialize our layers
-	repo := repository.NewMySQLRepo(db)
+	repo := repository.NewDBRepo(db)
 	bookingSvc := service.NewBookingService(repo, repo)
 	// End of PostgreSQL Conxn block
 
@@ -98,6 +100,20 @@ func main() {
 		})
 	})
 
+	r.GET("/marketplace", func(c *gin.Context) {
+		search := c.Query("q")
+
+		tickets, err := repo.GetMarketplace(search)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to load marketplace"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"data": tickets,
+		})
+	})
+
 	// POST Route to create a new ticket
 	r.POST("/tickets", func(c *gin.Context) {
 		var input struct {
@@ -119,6 +135,17 @@ func main() {
 		}
 
 		c.JSON(201, ticket)
+	})
+
+	r.GET("/my-orders", middleware.AuthRequired(), func(c *gin.Context) {
+		userID := c.MustGet("userID").(uint)
+
+		orders, err := repo.GetUserOrders(userID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to fetch orders"})
+			return
+		}
+		c.JSON(200, orders)
 	})
 
 	//PATCH Route to check-in a ticket
@@ -172,30 +199,61 @@ func main() {
 		c.JSON(201, user)
 	})
 
-	r.POST("/bookings",
-		middleware.AuthRequired(),
-		func(c *gin.Context) {
-			var input struct {
-				TicketID string `json:"ticket_id" binding:"required"`
-			}
+	// r.POST("/bookings",
+	// 	middleware.AuthRequired(),
+	// 	func(c *gin.Context) {
+	// 		var input struct {
+	// 			TicketID string `json:"ticket_id" binding:"required"`
+	// 		}
 
-			if err := c.ShouldBindJSON(&input); err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
+	// 		if err := c.ShouldBindJSON(&input); err != nil {
+	// 			c.JSON(400, gin.H{"error": err.Error()})
+	// 			return
+	// 		}
 
-			// 2. Get User ID from the token (extracted by middleware)
-			userID := c.MustGet("userID").(uint)
-			userName := c.GetString("userName")
+	// 		// 2. Get User ID from the token (extracted by middleware)
+	// 		userID := c.MustGet("userID").(uint)
+	// 		userName := c.GetString("userName")
 
-			err := bookingSvc.BookTicket(input.TicketID, userID)
-			if err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
+	// 		err := bookingSvc.BookTicket(input.TicketID, userID)
+	// 		if err != nil {
+	// 			c.JSON(400, gin.H{"error": err.Error()})
+	// 			return
+	// 		}
 
-			c.JSON(200, gin.H{"message": "Ticket booked successfully for " + userName + " (" + fmt.Sprint(userID) + ")"})
-		})
+	// 		c.JSON(200, gin.H{"message": "Ticket booked successfully for " + userName + " (" + fmt.Sprint(userID) + ")"})
+	// 	})
+
+	r.POST("/bookings/bulk", middleware.AuthRequired(), func(c *gin.Context) {
+		var req struct {
+			EventName string `json:"event_name"`
+			Category  string `json:"category"`
+			Quantity  int    `json:"quantity"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid JSON format"})
+			return
+		}
+
+		// DEBUG: Print the request to your terminal
+		fmt.Printf("Booking Request: %+v\n", req)
+
+		val, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+		userID := val.(uint)
+
+		err := bookingSvc.CreateBulkBooking(userID, req.EventName, req.Category, req.Quantity)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "Successfully booked " + fmt.Sprint(req.Quantity) + " tickets!"})
+	})
 
 	// Route to View User Profile with their Tickets
 	r.GET("/users/:id", func(c *gin.Context) {
@@ -341,6 +399,19 @@ func main() {
 			c.JSON(200, stats)
 		},
 	)
+
+	r.GET("/orders/:id", middleware.AuthRequired(), func(c *gin.Context) {
+		orderID := c.Param("id")
+		userID := c.MustGet("userID").(uint)
+
+		order, err := repo.GetOrderWithTickets(orderID, userID)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Order not found"})
+			return
+		}
+
+		c.JSON(200, order)
+	})
 
 	r.Run(":8080")
 }

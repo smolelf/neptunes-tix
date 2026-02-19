@@ -69,17 +69,43 @@ func (s *BookingService) CreateTicket(eventName string, category string, price f
 	return newTicket, err
 }
 
-func (s *BookingService) BookTicket(ticketID string, userID uint) error {
+func (s *BookingService) BookTickets(userID uint, eventName string, category string, quantity int) error {
 	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-		ticket, err := txRepo.GetByID(ticketID)
-		if err != nil || ticket.IsSold {
-			return errors.New("ticket unavailable")
+
+		// 1. Get N tickets using the 'Sequential' logic with Row Locking
+		tickets, err := txRepo.GetAvailableSequential(eventName, category, quantity)
+		if err != nil {
+			return err
+		}
+		if len(tickets) < quantity {
+			return errors.New("insufficient tickets available for this category")
 		}
 
-		ticket.IsSold = true
-		ticket.UserID = &userID
+		// 2. Calculate total price
+		var total float64
+		for _, t := range tickets {
+			total += t.Price
+		}
 
-		return txRepo.UpdateTicket(ticket)
+		// 3. Create the Order first (The Parent)
+		order := &domain.Order{
+			UserID:      userID,
+			TotalAmount: total,
+			Status:      "completed",
+		}
+		if err := txRepo.CreateOrder(order); err != nil {
+			return err
+		}
+
+		// 4. Link each ticket to the Order ID and mark as sold
+		for i := range tickets {
+			tickets[i].IsSold = true
+			tickets[i].OrderID = &order.ID
+			// Note: We no longer set ticket.UserID directly!
+		}
+
+		// 5. Batch update the tickets
+		return txRepo.UpdateTicketBatch(tickets)
 	})
 }
 
@@ -184,4 +210,38 @@ func (s *BookingService) UpdateOwnProfile(userID uint, name, email string) error
 
 	// 3. Save back to the database
 	return s.userRepo.UpdateUser(user)
+}
+
+func (s *BookingService) CreateBulkBooking(userID uint, eventName string, category string, quantity int) error {
+	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 1. Get the Sequential Tickets with Lock
+		tickets, err := txRepo.GetAvailableSequential(eventName, category, quantity)
+		if err != nil || len(tickets) < quantity {
+			return fmt.Errorf("only %d tickets available", len(tickets))
+		}
+
+		// 2. Calculate Total
+		total := 0.0
+		for _, t := range tickets {
+			total += t.Price
+		}
+
+		// 3. Create the Order
+		newOrder := &domain.Order{
+			UserID:      userID,
+			TotalAmount: total,
+			Status:      "completed",
+		}
+		if err := txRepo.CreateOrder(newOrder); err != nil {
+			return err
+		}
+
+		// 4. Link Tickets to Order and Mark Sold
+		for i := range tickets {
+			tickets[i].IsSold = true
+			tickets[i].OrderID = &newOrder.ID
+		}
+
+		return txRepo.UpdateTicketBatch(tickets)
+	})
 }

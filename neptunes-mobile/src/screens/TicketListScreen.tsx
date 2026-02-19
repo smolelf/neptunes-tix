@@ -13,6 +13,7 @@ interface Ticket {
     category: string;
     price: number;
     is_sold: boolean;
+    stock: number; // New field to show how many tickets are left
   }
 
 interface TicketResponse {
@@ -29,21 +30,20 @@ export default function TicketListScreen() {
   const [selectedTicket, setSelectedTicket] = useState<any>(null); // For the modal
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchTickets(); // Or fetchMyTickets() for the wallet
     setRefreshing(false);
   };
 
-  useEffect(() => {
-    fetchTickets();
-  }, []);
-
   const fetchTickets = async (query: string = '') => {
     try {
       setLoading(true);
       // Pass the search term to your new Go 'q' parameter
-      const response = await apiClient.get<TicketResponse>(`/tickets?q=${query}`);
+      const response = await apiClient.get<TicketResponse>(`/marketplace?q=${query}`);
       setTickets(response.data.data);
     } catch (error) {
       console.error(error);
@@ -65,6 +65,33 @@ export default function TicketListScreen() {
   useEffect(() => {
     fetchTickets();
   }, []);
+
+  const handleBulkBook = async () => {
+    if (!selectedTicket) return;
+    
+    try {
+      setBookingLoading(true);
+      const token = await SecureStore.getItemAsync('userToken');
+      
+      // We now send the Event Name, Category, and Quantity
+      await apiClient.post('/bookings/bulk', {
+        event_name: selectedTicket.event_name,
+        category: selectedTicket.category,
+        quantity: quantity,
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+  
+      Alert.alert("Success", `Booked ${quantity} tickets for ${selectedTicket.event_name}`);
+      setSelectedTicket(null);
+      setQuantity(1); // Reset
+      fetchTickets(); // Refresh list
+    } catch (error: any) {
+      Alert.alert("Error", error.response?.data?.error || "Booking failed");
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   const handlePurchase = async () => {
     try {
@@ -93,50 +120,116 @@ export default function TicketListScreen() {
         <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Ionicons name="search" size={20} color={colors.subText} style={{ marginRight: 10 }} />
             <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search events..."
-            placeholderTextColor={colors.subText}
-            value={searchQuery}
-            onChangeText={handleSearchChange}
-            clearButtonMode="while-editing" // iOS specific: adds an 'X' button
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search events..."
+                placeholderTextColor={colors.subText}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                clearButtonMode="while-editing" // iOS specific: adds an 'X' button
             />
         </View>
         
         <FlatList
             data={tickets}
             keyExtractor={(item) => item.ID.toString()}
+            contentContainerStyle={{ flexGrow: 1 }}
             renderItem={({ item }) => (
-            <TouchableOpacity 
-                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]} 
-                onPress={() => setSelectedTicket(item)}
-            >
-                <View style={{ flex: 1 }}>
-                <Text style={[styles.event, { color: colors.text }]}>{item.event_name}</Text>
-                <Text style={[styles.category, { color: colors.subText }]}>{item.category}</Text>
-                </View>
-                <Text style={styles.price}>RM{item.price}</Text>
-            </TouchableOpacity>
+                <TouchableOpacity 
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]} 
+                    onPress={() => setSelectedTicket(item)}
+                >
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.event, { color: colors.text }]}>{item.event_name}</Text>
+                        <Text style={[styles.category, { color: colors.subText }]}>
+                            {item.category} • {item.stock} left
+                        </Text>
+                    </View>
+                    <Text style={styles.price}>RM{item.price}</Text>
+                </TouchableOpacity>
             )}
             refreshing={refreshing}
             onRefresh={onRefresh}
+            ListEmptyComponent={() => (
+                <View style={styles.emptyContainer}>
+                    <Text style={{ color: colors.subText }}>No tickets available at the moment.</Text>
+                    <Text style={{ color: colors.subText, fontSize: 12 }}>Pull down to refresh</Text>
+                </View>
+            )}
         />
 
         {/* --- PURCHASE MODAL --- */}
-            <Modal visible={!!selectedTicket} transparent={true} animationType="fade">
-            <View style={styles.modalOverlay}>
+        <Modal visible={!!selectedTicket} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+            {/* Use colors.card for the modal background */}
             <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedTicket?.event_name}</Text>
-                <Text style={{ color: colors.subText }}>{selectedTicket?.category}</Text>
-                <Text style={styles.modalPrice}>RM{selectedTicket?.price}</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedTicket?.event_name}</Text>
+            <Text style={[styles.modalSub, { color: colors.subText }]}>
+                {selectedTicket?.category} — {selectedTicket?.stock} available
+            </Text>
+            <Text style={[styles.modalSub, { color: colors.subText }]}>
+                Select Quantity (Pax)
+            </Text>
+
+            <View style={styles.stepper}>
+                <TouchableOpacity 
+                    onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                    style={styles.stepperBtn}
+                >
+                    <Ionicons name="remove" size={24} color={colors.text} />
+                </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.buyButton} onPress={handlePurchase}>
-                <Text style={styles.buyButtonText}>Confirm Purchase</Text>
+                <Text style={[styles.quantityText, { color: colors.text }]}>{quantity}</Text>
+                
+                <TouchableOpacity 
+                    onPress={() => {
+                        // Only increment if we are below the available stock
+                        if (quantity < selectedTicket?.stock) {
+                            setQuantity(quantity + 1);
+                        } else {
+                            Alert.alert("Limit Reached", `Only ${selectedTicket?.stock} tickets left!`);
+                        }
+                    }}
+                    // Subtly dim the button if they can't click it anymore
+                    style={[styles.stepperBtn, quantity >= selectedTicket?.stock && { opacity: 0.3 }]}
+                >
+                    <Ionicons name="add" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setSelectedTicket(null)}>
-                <Text style={{ color: colors.subText, marginTop: 10 }}>Cancel</Text>
+            </View>
+
+            <Text style={styles.totalPrice}>
+                Total: RM{(selectedTicket?.price || 0) * quantity}
+            </Text>
+
+            <View style={{ width: '100%', gap: 10 }}>
+                <TouchableOpacity 
+                    style={[
+                        styles.confirmBtn, 
+                        (bookingLoading || selectedTicket?.stock === 0) && { backgroundColor: '#ccc' }
+                    ]} 
+                    onPress={handleBulkBook}
+                    disabled={bookingLoading || selectedTicket?.stock === 0}
+                >
+                    {bookingLoading ? (
+                        <ActivityIndicator color="white" />
+                    ) : (
+                        <Text style={styles.confirmText}>
+                            {selectedTicket?.stock === 0 ? "Sold Out" : "Confirm Booking"}
+                        </Text>
+                    )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={() => {
+                    setSelectedTicket(null);
+                    setQuantity(1);
+                }}
+                >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
             </View>
             </View>
+        </View>
         </Modal>
         </View>
   );
@@ -204,6 +297,50 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         elevation: 5,
     },
+    stepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginVertical: 20,
+        gap: 30,
+      },
+      stepperBtn: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(0,122,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+      },
+      quantityText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        minWidth: 40,
+        textAlign: 'center',
+      },
+      totalPrice: {
+        fontSize: 18,
+        fontWeight: '600',
+        textAlign: 'center',
+        marginBottom: 20,
+        color: '#28a745'
+      },
+      confirmBtn: {
+        backgroundColor: '#007AFF',
+        padding: 15,
+        borderRadius: 12,
+        width: '100%',
+        alignItems: 'center'
+    },
+    confirmText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 16
+    },
+    modalSub: {
+        fontSize: 14,
+        marginBottom: 5
+    },
     modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
     modalText: { fontSize: 16, color: 'gray', marginBottom: 5 },
     modalPrice: { fontSize: 20, fontWeight: 'bold', marginVertical: 15, color: '#007AFF' },
@@ -212,4 +349,10 @@ const styles = StyleSheet.create({
     buyButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
     cancelButton: { padding: 10, alignItems: 'center' },
     cancelButtonText: { color: 'gray' },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingBottom: 100, // Centers it visually above the bottom tabs
+    },
 });
