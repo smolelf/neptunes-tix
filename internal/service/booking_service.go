@@ -52,31 +52,32 @@ func (s *BookingService) MarkAsSold(id string) (*domain.Ticket, error) {
 	return ticket, err
 }
 
-func (s *BookingService) CreateTicket(eventName string, category string, price float64) (*domain.Ticket, error) {
-	// Business Rule: Price must be positive
+func (s *BookingService) CreateTicket(eventID uint, category string, price float64) (*domain.Ticket, error) {
 	if price < 0 {
-		return nil, fmt.Errorf("ticket price cannot be negative")
+		return nil, fmt.Errorf("price cannot be negative")
 	}
 
 	newTicket := &domain.Ticket{
-		EventName: eventName,
-		Category:  category,
-		Price:     price,
-		IsSold:    false,
+		EventID:  eventID,
+		Category: category,
+		Price:    price,
+		IsSold:   false,
 	}
 
 	err := s.ticketRepo.CreateTicket(newTicket)
 	return newTicket, err
 }
 
-func (s *BookingService) BookTickets(userID uint, eventName string, category string, quantity int) error {
+// Change eventName string -> eventID uint
+func (s *BookingService) BookTickets(userID uint, eventID uint, category string, quantity int) error {
 	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
 
-		// 1. Get N tickets using the 'Sequential' logic with Row Locking
-		tickets, err := txRepo.GetAvailableSequential(eventName, category, quantity)
+		// 1. Pass the eventID (uint) instead of the name
+		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
 		}
+
 		if len(tickets) < quantity {
 			return errors.New("insufficient tickets available for this category")
 		}
@@ -87,7 +88,7 @@ func (s *BookingService) BookTickets(userID uint, eventName string, category str
 			total += t.Price
 		}
 
-		// 3. Create the Order first (The Parent)
+		// 3. Create the Order
 		order := &domain.Order{
 			UserID:      userID,
 			TotalAmount: total,
@@ -97,14 +98,13 @@ func (s *BookingService) BookTickets(userID uint, eventName string, category str
 			return err
 		}
 
-		// 4. Link each ticket to the Order ID and mark as sold
+		// 4. Link each ticket to the Order ID
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &order.ID
-			// Note: We no longer set ticket.UserID directly!
 		}
 
-		// 5. Batch update the tickets
+		// 5. Batch update
 		return txRepo.UpdateTicketBatch(tickets)
 	})
 }
@@ -153,22 +153,26 @@ func (s *BookingService) Login(email, password string) (string, error) {
 	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
-func (s *BookingService) CheckInTicket(ticketID string) error {
+func (s *BookingService) CheckInTicket(ticketID string, expectedEventID uint) error {
 	ticket, err := s.ticketRepo.GetByID(ticketID)
 	if err != nil {
 		return fmt.Errorf("ticket not found")
 	}
 
+	if ticket.EventID != expectedEventID {
+		return fmt.Errorf("wrong event: this ticket is for %s", ticket.Event.Name)
+	}
+
 	if !ticket.IsSold {
-		return fmt.Errorf("cannot check in an unsold ticket")
+		return fmt.Errorf("invalid ticket: not sold")
 	}
 
 	if ticket.CheckedInAt != nil {
-		return fmt.Errorf("ticket already used at %v", ticket.CheckedInAt)
+		return fmt.Errorf("already used at %s", ticket.CheckedInAt.Format("15:04:05"))
 	}
 
 	now := time.Now()
-	ticket.CheckedInAt = &now
+	ticket.CheckedInAt = &now // Assigning the address of 'now' to the pointer
 
 	return s.ticketRepo.UpdateTicket(ticket)
 }
@@ -212,12 +216,16 @@ func (s *BookingService) UpdateOwnProfile(userID uint, name, email string) error
 	return s.userRepo.UpdateUser(user)
 }
 
-func (s *BookingService) CreateBulkBooking(userID uint, eventName string, category string, quantity int) error {
+func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error {
 	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-		// 1. Get the Sequential Tickets with Lock
-		tickets, err := txRepo.GetAvailableSequential(eventName, category, quantity)
-		if err != nil || len(tickets) < quantity {
-			return fmt.Errorf("only %d tickets available", len(tickets))
+
+		// 1. Get the Sequential Tickets using the EventID
+		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
+		if err != nil {
+			return err
+		}
+		if len(tickets) < quantity {
+			return fmt.Errorf("insufficient tickets: only %d available", len(tickets))
 		}
 
 		// 2. Calculate Total
@@ -226,17 +234,17 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventName string, catego
 			total += t.Price
 		}
 
-		// 3. Create the Order
+		// 3. Create the Order Parent
 		newOrder := &domain.Order{
 			UserID:      userID,
 			TotalAmount: total,
-			Status:      "completed",
+			Status:      "paid", // Updated status for clarity
 		}
 		if err := txRepo.CreateOrder(newOrder); err != nil {
 			return err
 		}
 
-		// 4. Link Tickets to Order and Mark Sold
+		// 4. Update the tickets with OrderID and set IsSold = true
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &newOrder.ID

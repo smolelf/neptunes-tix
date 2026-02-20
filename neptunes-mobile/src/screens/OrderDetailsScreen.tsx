@@ -1,7 +1,6 @@
-import React from 'react';
-import { View, Text, FlatList, StyleSheet, ScrollView } from 'react-native';
+import React, { useContext, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { useContext, useState} from 'react';
 import { ThemeContext } from '../context/ThemeContext';
 import apiClient from '../api/client';
 
@@ -13,27 +12,18 @@ export default function OrderDetailsScreen({ route }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-
-      const response = await apiClient.get(`/orders/${order.ID}`)
-
+      // Fetch the latest order status (to see if tickets were scanned while the app was open)
+      const response = await apiClient.get(`/orders/${order.ID}`);
       setOrder(response.data); 
     } catch (error) {
       console.error("Refresh failed:", error);
-      // Optional: Alert.alert("Error", "Could not update ticket status");
     } finally {
       setRefreshing(false);
     }
   };
 
-  const dynamicStyles = {
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-  };
-
   return (
-    <View style={[dynamicStyles.container, { backgroundColor: colors.background }]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <FlatList
         data={order.tickets}
         refreshing={refreshing}
@@ -43,64 +33,113 @@ export default function OrderDetailsScreen({ route }: any) {
         ListHeaderComponent={() => (
           <View style={styles.header}>
             <Text style={[styles.orderTitle, { color: colors.text }]}>Order #{order.ID}</Text>
-            <Text style={{ color: colors.subText }}>Show these QR codes at the entrance</Text>
+            <Text style={{ color: colors.subText }}>Swipe through your tickets below</Text>
           </View>
         )}
-        renderItem={({ item, index }) => (
+        renderItem={({ item, index }) => {
+          // Relational Fix: Get name from nested event object
+          const eventName = item.event?.name || "Event Ticket";
+          
+          return (
             <View style={[
                 styles.ticketCard, 
                 { backgroundColor: colors.card },
-                item.checked_in_at && { opacity: 0.5 } // Dims the card if already scanned
+                item.checked_in_at && { opacity: 0.6 }
               ]}>
-                {item.checked_in_at && (
-                <View style={styles.scannedOverlay}>
-                <Text style={styles.scannedText}>SCANNED</Text>
-                </View>
-                )}
-            <View style={styles.ticketHeader}>
-              <Text style={[styles.eventTitle, { color: colors.text }]}>{item.event_name}</Text>
-              <Text style={styles.paxLabel}>Ticket {index + 1} of {order.tickets.length}</Text>
-            </View>
-            
-            <View style={styles.qrContainer}>
-              {/* Keep QR background white for scanners */}
-              <View style={styles.whiteBox}>
-                <QRCode value={item.ID.toString()} size={180} />
-              </View>
-              <Text style={[styles.ticketId, { color: colors.subText }]}>ID: {item.ID}</Text>
-            </View>
+                
+                {/* Visual side-notches for ticket effect */}
+                <View style={[styles.notch, styles.notchLeft, { backgroundColor: colors.background }]} />
+                <View style={[styles.notch, styles.notchRight, { backgroundColor: colors.background }]} />
 
-            <Text style={[
-                styles.status, 
-                item.checked_in_at && { color: colors.subText }
-                ]}>
-                {item.checked_in_at ? "Checked In" : "Ready to Scan"}
-            </Text>
-          </View>
-        )}
+                {item.checked_in_at && (
+                  <View style={styles.scannedOverlay}>
+                    <Text style={styles.scannedText}>USED</Text>
+                  </View>
+                )}
+
+                <View style={styles.ticketHeader}>
+                  <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>
+                    {eventName}
+                  </Text>
+                  <Text style={styles.paxLabel}>TICKET {index + 1} OF {order.tickets.length}</Text>
+                </View>
+                
+                <View style={styles.qrContainer}>
+                  {/* White box is mandatory so QR codes work in Dark Mode */}
+                  <View style={styles.whiteBox}>
+                    <QRCode 
+                        value={item.ID.toString()} 
+                        size={200} 
+                        color="black"
+                        backgroundColor="white"
+                    />
+                  </View>
+                  <Text style={[styles.ticketId, { color: colors.subText }]}>
+                    SERIAL: {item.ID.toString().padStart(6, '0')}
+                  </Text>
+                </View>
+
+                <View style={styles.footer}>
+                    <Text style={[styles.category, { color: colors.text }]}>
+                        {item.category}
+                    </Text>
+                    <Text style={[
+                        styles.status, 
+                        item.checked_in_at ? { color: '#8e8e93' } : { color: '#28a745' }
+                    ]}>
+                        {item.checked_in_at ? "CHECKED IN" : "READY TO SCAN"}
+                    </Text>
+                </View>
+            </View>
+          );
+        }}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { marginBottom: 20, alignItems: 'center' },
-  orderTitle: { fontSize: 22, fontWeight: 'bold' },
+  header: { marginBottom: 30, alignItems: 'center', marginTop: 10 },
+  orderTitle: { fontSize: 24, fontWeight: 'bold' },
   ticketCard: {
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 25,
+    padding: 24,
+    marginBottom: 30,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.1)',
+    position: 'relative', // Necessary for notches
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
-  ticketHeader: { width: '100%', marginBottom: 20, alignItems: 'center' },
-  eventTitle: { fontSize: 20, fontWeight: 'bold' },
-  paxLabel: { fontSize: 14, color: '#007AFF', marginTop: 4, fontWeight: '600' },
-  qrContainer: { alignItems: 'center', marginVertical: 10 },
-  whiteBox: { backgroundColor: '#fff', padding: 15, borderRadius: 15 },
-  ticketId: { marginTop: 10, fontSize: 12, letterSpacing: 1 },
+  // Ticket Notch Effect
+  notch: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    top: '75%', // Positioned near the bottom section
+    zIndex: 5,
+  },
+  notchLeft: { left: -15 },
+  notchRight: { right: -15 },
+  
+  ticketHeader: { width: '100%', marginBottom: 15, alignItems: 'center' },
+  eventTitle: { fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
+  paxLabel: { fontSize: 12, color: '#007AFF', marginTop: 4, fontWeight: '800', letterSpacing: 1 },
+  qrContainer: { alignItems: 'center', marginVertical: 15 },
+  whiteBox: { 
+    backgroundColor: '#fff', 
+    padding: 15, 
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eee'
+  },
+  ticketId: { marginTop: 12, fontSize: 11, letterSpacing: 2, fontWeight: '500' },
   footer: { 
     width: '100%', 
     borderTopWidth: 1, 
@@ -108,26 +147,27 @@ const styles = StyleSheet.create({
     marginTop: 20, 
     paddingTop: 15,
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  category: { fontWeight: '700', textTransform: 'uppercase' },
-  status: { color: '#28a745', fontWeight: 'bold' },
+  category: { fontWeight: '800', textTransform: 'uppercase', fontSize: 14 },
+  status: { fontWeight: 'bold', fontSize: 13 },
   scannedOverlay: {
     position: 'absolute',
-    top: '50%',
+    top: '40%',
     zIndex: 10,
-    backgroundColor: 'rgba(255, 0, 0, 0.8)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    transform: [{ rotate: '-15deg' }], // Gives it that "stamped" look
-    borderWidth: 2,
+    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 12,
+    transform: [{ rotate: '-12deg' }],
+    borderWidth: 3,
     borderColor: '#fff',
   },
   scannedText: {
     color: '#fff',
     fontWeight: '900',
-    fontSize: 24,
-    letterSpacing: 2,
+    fontSize: 28,
+    letterSpacing: 3,
   },
 });

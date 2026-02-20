@@ -13,10 +13,9 @@ import { Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 const { width } = Dimensions.get('window');
 
 interface TicketStats {
-    total_sold: number;
-    checked_in: number;
-    remaining: number;
-  }
+  total_sold: number;
+  total_scanned: number; // Renamed to match Go struct
+}
 
 export default function ScannerScreen() {
   const insets = useSafeAreaInsets();
@@ -39,14 +38,17 @@ export default function ScannerScreen() {
 
   const [stats, setStats] = useState<TicketStats>({ 
     total_sold: 0, 
-    checked_in: 0, 
-    remaining: 0 
+    total_scanned: 0, // Match backend
   });
   
   const fetchStats = async () => {
     try {
-        const response = await apiClient.get<TicketStats>('/tickets/stats')
-        setStats(response.data);
+        // Updated endpoint to use the Admin Stats we just built in Go
+        const response = await apiClient.get<TicketStats>('/admin/stats');
+        setStats({
+          total_sold: response.data.total_sold,
+          total_scanned: response.data.total_scanned
+        });
     } catch (error) {
         console.error("Stats fetch failed", error);
     }
@@ -90,174 +92,177 @@ export default function ScannerScreen() {
     setLoading(true);
 
     try {
-      await apiClient.patch(`/tickets/${data}/checkin`)
+      // data is the Ticket ID. Matches our Go repo ScanTicket(id)
+      const response = await apiClient.patch<{ data: any }>(`/tickets/${data}/checkin`);
+      const ticketInfo = response.data.data; // Assuming your handler returns the ticket
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      Alert.alert("✅ Success", "Guest Verified", [
-        { text: "OK", onPress: () => {
-          setLoading(false);
-          scanLock.current = false;
-          fetchStats(); // Refresh stats after success
-        }}
-      ]);
+      Alert.alert(
+        "✅ Verified", 
+        `Guest: ${ticketInfo.owner_name || 'Valid Ticket'}\nEvent: ${ticketInfo.event?.name || 'Gate Entry'}`, 
+        [{ text: "OK", onPress: () => resetScanner() }]
+      );
 
     } catch (error: any) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-        const msg = error.response?.data?.error || "Invalid Ticket";
-        Alert.alert("❌ Error", msg, [
-            { text: "Try Again", onPress: () => {
-            setLoading(false);
-            scanLock.current = false;
-            }}
+        const msg = error.response?.data?.error || "Invalid or Already Scanned";
+        
+        Alert.alert("❌ Access Denied", msg, [
+            { text: "Try Again", onPress: () => resetScanner() }
         ]);
     }
   };
 
+  const resetScanner = () => {
+    setLoading(false);
+    scanLock.current = false;
+    fetchStats();
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {isFocused && cameraActive && !loading ? (
-        <View style={StyleSheet.absoluteFill}>
-          <CameraView
-            style={StyleSheet.absoluteFill}
-            onBarcodeScanned={handleBarCodeScanned}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-            zoom={0.01}
-            enableTorch={torchOn}
-          />
-
-          <TouchableOpacity 
-            style={[styles.torchButton, { top: insets.top + 20 }]} 
-            onPress={() => {
-                Haptics.selectionAsync(); // Give it a little click feel
-                setTorchOn(!torchOn);
-            }}
-          >
-            <Ionicons 
-              name={torchOn ? "flash" : "flash-off"} 
-              size={24} 
-              color={torchOn ? "#FFD60A" : "white"} 
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {isFocused && cameraActive && !loading ? (
+          <View style={StyleSheet.absoluteFill}>
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              onBarcodeScanned={handleBarCodeScanned}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              zoom={0.01}
+              enableTorch={torchOn}
             />
-          </TouchableOpacity>
 
-          <View style={[styles.topUi, { paddingTop: insets.top + 100 }]}>
-            <View style={styles.targetSquare}>
-              <View style={[styles.corner, styles.tl]} />
-              <View style={[styles.corner, styles.tr]} />
-              <View style={[styles.corner, styles.bl]} />
-              <View style={[styles.corner, styles.br]} />
-            </View>
-            <Text style={styles.hint}>Align QR within frame</Text>
-          </View>
-
-          <View style={[styles.bottomUi, { paddingBottom: insets.bottom + 20 }]}>
-            {/* MANUAL ENTRY BUTTON */}
             <TouchableOpacity 
-                style={styles.manualEntryBtn}
-                onPress={() => {
-                Haptics.selectionAsync();
-                setManualModalVisible(true);
-                }}
+              style={[styles.torchButton, { top: insets.top + 20 }]} 
+              onPress={() => {
+                  Haptics.selectionAsync();
+                  setTorchOn(!torchOn);
+              }}
             >
-                <Ionicons name="keypad-outline" size={20} color="white" />
-                <Text style={styles.manualEntryText}>Manual Entry</Text>
+              <Ionicons 
+                name={torchOn ? "flash" : "flash-off"} 
+                size={24} 
+                color={torchOn ? "#FFD60A" : "white"} 
+              />
             </TouchableOpacity>
 
-            {/* CLOSE BUTTON */}
-            <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={() => {
-                setCameraActive(false);
-                Haptics.selectionAsync();
-                }}
-            >
-                <Ionicons name="close-circle" size={20} color="white" />
-                <Text style={styles.cancelText}>CLOSE SCANNER</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.idleState}>
-          {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color="#007AFF" />
-              <Text style={[styles.loadingText, { color: colors.text }]}>Checking Database...</Text>
+            <View style={[styles.topUi, { paddingTop: insets.top + 100 }]}>
+              <View style={styles.targetSquare}>
+                <View style={[styles.corner, styles.tl]} />
+                <View style={[styles.corner, styles.tr]} />
+                <View style={[styles.corner, styles.bl]} />
+                <View style={[styles.corner, styles.br]} />
+              </View>
+              <Text style={styles.hint}>Align QR within frame</Text>
             </View>
-          ) : (
-            <>
-              <View style={styles.welcomeCircle}>
-                <Ionicons name="stats-chart" size={50} color="#007AFF" />
-              </View>
 
-              <View style={[styles.statCard, { backgroundColor: colors.card || '#f8f9fa' }]}>
-                <Text style={[styles.statLabel, { color: colors.subText }]}>LIVE CHECK-IN STATS</Text>
-                <Text style={[styles.statValue, { color: colors.text }]}>
-                  {stats.checked_in} / {stats.total_sold}
-                </Text>
-                
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { 
-                      width: `${stats.total_sold > 0 ? (stats.checked_in / stats.total_sold) * 100 : 0}%` 
-                  }]} />
-                </View>
-                <Text style={styles.percentageText}>
-                  {stats.total_sold > 0 ? Math.round((stats.checked_in / stats.total_sold) * 100) : 0}% capacity
-                </Text>
-              </View>
-
+            <View style={[styles.bottomUi, { paddingBottom: insets.bottom + 20 }]}>
               <TouchableOpacity 
-                style={styles.startButton} 
-                onPress={() => { 
+                  style={styles.manualEntryBtn}
+                  onPress={() => {
                     Haptics.selectionAsync();
-                    scanLock.current = false; 
-                    setCameraActive(true); 
-                }}
+                    setManualModalVisible(true);
+                  }}
               >
-                <Text style={styles.buttonText}>Open Scanner</Text>
+                  <Ionicons name="keypad-outline" size={20} color="white" />
+                  <Text style={styles.manualEntryText}>Manual Entry</Text>
               </TouchableOpacity>
-            </>
-          )}
-        </View>
-      )}
 
-<Modal visible={manualModalVisible} animationType="slide" transparent={true}>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Manual Check-in</Text>
-            <TextInput
-              style={[styles.manualInput, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Enter Ticket ID"
-              placeholderTextColor={colors.subText}
-              value={manualId}
-              onChangeText={setManualId}
-              keyboardType="number-pad" // Ticket IDs are usually numeric
-              autoFocus={true}
-            />
-            <View style={styles.modalButtons}>
               <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: '#FF3B30' }]} 
-                onPress={() => setManualModalVisible(false)}
+                  style={styles.cancelButton} 
+                  onPress={() => {
+                    setCameraActive(false);
+                    Haptics.selectionAsync();
+                  }}
               >
-                <Text style={styles.btnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtn, { backgroundColor: '#007AFF' }]} 
-                onPress={handleManualSubmit}
-              >
-                <Text style={styles.btnText}>Verify</Text>
+                  <Ionicons name="close-circle" size={20} color="white" />
+                  <Text style={styles.cancelText}>CLOSE SCANNER</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        ) : (
+          <View style={styles.idleState}>
+            {loading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color="#007AFF" />
+                <Text style={[styles.loadingText, { color: colors.text }]}>Checking Database...</Text>
+              </View>
+            ) : (
+              // Fixed the nested View and Fragment logic here
+              <>
+                <View style={styles.welcomeCircle}>
+                  <Ionicons name="stats-chart" size={50} color="#007AFF" />
+                </View>
 
-    </View>
-  );
-}
+                <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.statLabel, { color: colors.subText }]}>LIVE GATE STATS</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>
+                    {stats.total_scanned} / {stats.total_sold}
+                  </Text>
+                  
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { 
+                        width: `${stats.total_sold > 0 ? (stats.total_scanned / stats.total_sold) * 100 : 0}%`,
+                        backgroundColor: stats.total_scanned === stats.total_sold && stats.total_sold > 0 ? '#28a745' : '#007AFF'
+                    }]} />
+                  </View>
+                  <Text style={styles.percentageText}>
+                    {stats.total_sold - stats.total_scanned} guests remaining
+                  </Text>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.startButton} 
+                  onPress={() => { 
+                      Haptics.selectionAsync();
+                      scanLock.current = false; 
+                      setCameraActive(true); 
+                  }}
+                >
+                  <Text style={styles.buttonText}>Open Scanner</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Manual Entry Modal */}
+        <Modal visible={manualModalVisible} animationType="slide" transparent={true}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalOverlay}
+          >
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Manual Check-in</Text>
+              <TextInput
+                style={[styles.manualInput, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Enter Ticket ID"
+                placeholderTextColor={colors.subText}
+                value={manualId}
+                onChangeText={setManualId}
+                keyboardType="number-pad"
+                autoFocus={true}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, { backgroundColor: '#FF3B30' }]} 
+                  onPress={() => setManualModalVisible(false)}
+                >
+                  <Text style={styles.btnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, { backgroundColor: '#007AFF' }]} 
+                  onPress={handleManualSubmit}
+                >
+                  <Text style={styles.btnText}>Verify</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </View>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

@@ -85,7 +85,7 @@ export default function ProfileScreen() { // Removed { navigation } from props t
               <View style={[styles.iconBg, { backgroundColor: '#4CD964' }]}>
                 <Ionicons name="stats-chart" size={20} color="#fff" />
               </View>
-              <Text style={[styles.menuText, { color: colors.text }]}>Sales Dashboard</Text>
+              <Text style={[styles.menuText, { color: colors.text }]}>Admin Dashboard</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.subText} />
           </TouchableOpacity>

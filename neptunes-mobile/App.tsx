@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -18,10 +18,25 @@ import ScannerScreen from './src/screens/ScannerScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import CreateEventScreen from './src/screens/CreateEventScreen';
 
+export type RootStackParamList = {
+  Login: undefined;
+  Home: undefined;
+  OrderDetails: { orderId: string };
+  AdminDashboard: undefined;
+  CreateEvent: undefined;
+};
+
+export type MainTabParamList = {
+  Marketplace: undefined;
+  Wallet: undefined;
+  Scanner: undefined;
+  Profile: undefined;
+};
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator<any>();
+const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);
@@ -32,22 +47,21 @@ function MainTabs() {
   return (
     <Tab.Navigator 
       screenOptions={({ route }) => ({ 
-        // --- ADD DYNAMIC VISIBILITY HERE ---
         headerShown: true,
         tabBarStyle: { 
-          display: 'flex',
           backgroundColor: colors.background,
           borderTopColor: isDark ? '#333' : '#eee',
         },
-        // ------------------------------------
-        
-        headerStyle: { backgroundColor: colors.background },
+        headerStyle: { 
+          backgroundColor: colors.background,
+          elevation: 0, // Remove shadow on Android
+          shadowOpacity: 0, // Remove shadow on iOS
+        },
         headerTintColor: colors.text,
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: 'gray',
-        
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: any;
+          let iconName: keyof typeof Ionicons.glyphMap = 'help-outline';
           if (route.name === 'Marketplace') iconName = focused ? 'cart' : 'cart-outline';
           else if (route.name === 'Wallet') iconName = focused ? 'wallet' : 'wallet-outline';
           else if (route.name === 'Scanner') iconName = focused ? 'scan' : 'scan-outline';
@@ -55,29 +69,27 @@ function MainTabs() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-
-        headerTitle: (props) => {
-          // If we are on Marketplace, show the welcome message
-          if (route.name === 'Marketplace') {
-            return (
-              <View style={{ marginLeft: 10 }}>
-                <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
-                  Welcome, {displayName}! 👋
-                </Text>
-              </View>
-            );
-          }
-          // For other tabs, use the default title (Marketplace, Wallet, etc.)
-          return <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>{route.name}</Text>;
-        }
       })}
     >
-      <Tab.Screen name="Marketplace" component={TicketListScreen} />
+      <Tab.Screen 
+        name="Marketplace" 
+        component={TicketListScreen} 
+        options={{
+          headerTitle: () => (
+            <View style={{ marginLeft: Platform.OS === 'ios' ? 0 : -10 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
+                Welcome, {displayName}! 👋
+              </Text>
+            </View>
+          )
+        }}
+      />
       <Tab.Screen name="Wallet" component={MyTicketsScreen} />
       
-      {(user?.user_role === 'agent' || user?.user_role === 'admin') ? (
+      {/* Role-based conditional rendering */}
+      {(user?.user_role === 'agent' || user?.user_role === 'admin') && (
         <Tab.Screen name="Scanner" component={ScannerScreen} />
-      ) : null}
+      )}
 
       <Tab.Screen name="Profile" component={ProfileScreen}/>
     </Tab.Navigator>
@@ -130,6 +142,15 @@ function AppNavigator() {
             // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background } 
           }} 
+        />
+        <Stack.Screen 
+          name="CreateEvent" 
+          component={CreateEventScreen} 
+          options={{
+            title: 'Launch New Event',
+            // This forces the 'canvas' behind the screen to match your theme
+            contentStyle: { backgroundColor: colors.background }
+           }} 
         />
       </Stack.Navigator>
     </NavigationContainer>
