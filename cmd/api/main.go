@@ -350,6 +350,19 @@ func main() {
 		},
 	)
 
+	r.GET("/admin/stats",
+		middleware.AuthRequired(),
+		middleware.AdminOnly(),
+		func(c *gin.Context) {
+			stats, err := repo.GetAdminStats()
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Failed to fetch stats"})
+				return
+			}
+			c.JSON(200, stats)
+		},
+	)
+
 	r.GET("/my-tickets", middleware.AuthRequired(), func(c *gin.Context) {
 		// Extract ID from the JWT context we set in middleware
 		userID := c.MustGet("userID").(uint)

@@ -4,7 +4,6 @@ import QRCode from 'react-native-qrcode-svg';
 import { useContext, useState} from 'react';
 import { ThemeContext } from '../context/ThemeContext';
 import apiClient from '../api/client';
-import * as SecureStore from 'expo-secure-store';
 
 export default function OrderDetailsScreen({ route }: any) {
   const { colors, isDark } = useContext(ThemeContext);
@@ -14,14 +13,9 @@ export default function OrderDetailsScreen({ route }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      const token = await SecureStore.getItemAsync('userToken');
-      
-      // 2. Fetch the updated order from the new endpoint
-      const response = await apiClient.get(`/orders/${order.ID}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // 3. Update the state (this will make the "SCANNED" stamps appear!)
+
+      const response = await apiClient.get(`/orders/${order.ID}`)
+
       setOrder(response.data); 
     } catch (error) {
       console.error("Refresh failed:", error);

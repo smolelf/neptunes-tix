@@ -234,3 +234,28 @@ func (d *dbRepo) GetOrderWithTickets(orderID string, userID uint) (domain.Order,
 
 	return order, err
 }
+
+func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
+	type EventStat struct {
+		EventName string  `json:"event_name"`
+		Sold      int     `json:"sold"`
+		Scanned   int     `json:"scanned"`
+		Revenue   float64 `json:"revenue"`
+	}
+
+	var eventStats []EventStat
+	d.db.Model(&domain.Ticket{}).
+		Select("event_name, count(*) as sold, sum(price) as revenue, count(checked_in_at) as scanned").
+		Where("is_sold = ?", true).
+		Group("event_name").
+		Scan(&eventStats)
+
+	// Also get the global totals for the top cards
+	var totalRev float64
+	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Select("SUM(price)").Scan(&totalRev)
+
+	return map[string]interface{}{
+		"total_revenue": totalRev,
+		"events":        eventStats,
+	}, nil
+}

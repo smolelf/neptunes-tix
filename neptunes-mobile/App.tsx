@@ -16,11 +16,12 @@ import TicketListScreen from './src/screens/TicketListScreen';
 import MyTicketsScreen from './src/screens/MyTicketsScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import OrderDetailsScreen from './src/screens/OrderDetailsScreen'; // Ensure this file exists at src/screens/OrderDetailsScreen.tsx
+import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
+import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<any>();
 
 function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);
@@ -74,9 +75,9 @@ function MainTabs() {
       <Tab.Screen name="Marketplace" component={TicketListScreen} />
       <Tab.Screen name="Wallet" component={MyTicketsScreen} />
       
-      {(user?.user_role === 'agent' || user?.user_role === 'admin') && (
+      {(user?.user_role === 'agent' || user?.user_role === 'admin') ? (
         <Tab.Screen name="Scanner" component={ScannerScreen} />
-      )}
+      ) : null}
 
       <Tab.Screen name="Profile" component={ProfileScreen}/>
     </Tab.Navigator>
@@ -117,6 +118,15 @@ function AppNavigator() {
           component={OrderDetailsScreen} 
           options={{ 
             title: 'Your Tickets',
+            // This forces the 'canvas' behind the screen to match your theme
+            contentStyle: { backgroundColor: colors.background } 
+          }} 
+        />
+        <Stack.Screen 
+          name="AdminDashboard" 
+          component={AdminDashboardScreen} 
+          options={{ 
+            title: 'Event Analytics',
             // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background } 
           }} 

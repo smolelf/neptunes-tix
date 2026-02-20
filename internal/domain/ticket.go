@@ -42,6 +42,7 @@ type TicketRepository interface {
 	GetMarketplace(search string) ([]Ticket, error)
 	GetUserOrders(userID uint) ([]Order, error)
 	GetOrderWithTickets(orderID string, userID uint) (Order, error)
+	GetAdminStats() (map[string]interface{}, error)
 }
 
 // Response structure for the stats

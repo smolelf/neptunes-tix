@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
 import { useContext } from 'react';
@@ -43,14 +42,7 @@ export default function MyTicketsScreen() {
 
   const fetchMyTickets = async () => {
     try {
-      // 1. Get the saved token
-      const token = await SecureStore.getItemAsync('userToken');
-      
-      // 2. Send request with Authorization Header
-      const response = await apiClient.get<Order[]>('/my-orders', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const response = await apiClient.get<Order[]>('/my-orders');
       setMyOrders(response.data);
     } catch (error) {
       console.error("Fetch error:", error);

@@ -45,10 +45,7 @@ export default function ScannerScreen() {
   
   const fetchStats = async () => {
     try {
-        const token = await SecureStore.getItemAsync('userToken');
-        const response = await apiClient.get<TicketStats>('/tickets/stats', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await apiClient.get<TicketStats>('/tickets/stats')
         setStats(response.data);
     } catch (error) {
         console.error("Stats fetch failed", error);
@@ -93,10 +90,7 @@ export default function ScannerScreen() {
     setLoading(true);
 
     try {
-      const token = await SecureStore.getItemAsync('userToken');
-      await apiClient.patch(`/tickets/${data}/checkin`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiClient.patch(`/tickets/${data}/checkin`)
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
