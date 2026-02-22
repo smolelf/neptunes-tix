@@ -81,7 +81,7 @@ func (d *dbRepo) UpdateTicket(ticket *domain.Ticket) error {
 
 func (d *dbRepo) GetByID(id string) (*domain.Ticket, error) {
 	var ticket domain.Ticket
-	err := d.db.Preload("Event").First(&ticket, id).Error
+	err := d.db.First(&ticket, "id = ?", id).Error
 	return &ticket, err
 }
 
@@ -127,6 +127,7 @@ func (d *dbRepo) CreateEventStock(req domain.CreateEventRequest) error {
 		var tickets []domain.Ticket
 		for _, tier := range req.Tiers {
 			for i := 0; i < tier.Quantity; i++ {
+				// Just add the data to the slice, don't hit the DB yet
 				tickets = append(tickets, domain.Ticket{
 					EventID:  newEvent.ID,
 					Category: tier.Category,
@@ -135,6 +136,13 @@ func (d *dbRepo) CreateEventStock(req domain.CreateEventRequest) error {
 				})
 			}
 		}
+
+		// Safety check: Don't try to insert if the slice is empty
+		if len(tickets) == 0 {
+			return fmt.Errorf("no tickets were generated. check tier quantities")
+		}
+
+		// ONE single database call to insert everything in the slice
 		return tx.Create(&tickets).Error
 	})
 }
@@ -274,27 +282,43 @@ func (d *dbRepo) Transaction(fn func(domain.TicketRepository) error) error {
 	})
 }
 
+// --- SCANNING ---
+
 func (d *dbRepo) ScanTicket(ticketID string) (*domain.Ticket, error) {
 	var ticket domain.Ticket
 
-	// We preload "Event" so the Scanner UI can say "Welcome to [Event Name]"
-	// We also use a transaction or a specific ID check
+	// 1. Fetch ticket and ensure it exists
 	err := d.db.Preload("Event").First(&ticket, "id = ?", ticketID).Error
 	if err != nil {
-		return nil, fmt.Errorf("ticket not found")
+		return nil, fmt.Errorf("invalid ticket code")
 	}
 
+	// 2. Security Check: Is it sold?
 	if !ticket.IsSold {
-		return &ticket, fmt.Errorf("this ticket has not been sold yet")
+		return &ticket, fmt.Errorf("unpaid ticket - cannot admit")
 	}
 
+	// 3. Security Check: Is it a duplicate scan?
 	if ticket.CheckedInAt != nil {
-		// Formatted time makes the error message more helpful for the Agent
-		return &ticket, fmt.Errorf("already scanned at %s", ticket.CheckedInAt.Format("03:04 PM"))
+		return &ticket, fmt.Errorf("ALREADY USED: scanned at %s", ticket.CheckedInAt.Format("03:04 PM"))
 	}
 
+	// 4. Mark as scanned
 	now := time.Now()
-	ticket.CheckedInAt = &now
+	err = d.db.Model(&ticket).Update("checked_in_at", now).Error
 
-	return &ticket, d.db.Save(&ticket).Error
+	ticket.CheckedInAt = &now // Update local object for the response
+	return &ticket, err
+}
+
+func (d *dbRepo) GetGateStats() (int64, int64, error) {
+	var sold, scanned int64
+
+	// Count tickets where is_sold is true
+	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Count(&sold)
+
+	// Count tickets where checked_in_at is not null
+	d.db.Model(&domain.Ticket{}).Where("checked_in_at IS NOT NULL").Count(&scanned)
+
+	return sold, scanned, nil
 }

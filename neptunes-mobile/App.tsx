@@ -36,7 +36,7 @@ export type MainTabParamList = {
 };
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);

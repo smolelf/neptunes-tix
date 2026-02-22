@@ -1,20 +1,21 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 
+
+const { width } = Dimensions.get('window');
 // 1. Updated Interface: event is now a nested object
 interface Ticket {
-    ID: number;
-    category: string;
-    checked_in_at: string | null;
-    event?: {
-        name: string;
-        venue?: string;
-        date?: string;
-    };
+  id: string; // This is our new UUID!
+  category: string;
+  event: {
+    name: string;
+    venue: string;
+    date: string;
+  };
 }
   
 interface Order {

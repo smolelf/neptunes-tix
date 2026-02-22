@@ -3,6 +3,7 @@ package domain
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -24,16 +25,27 @@ type Order struct {
 }
 
 type Ticket struct {
-	gorm.Model
+	ID        string         `gorm:"type:uuid;primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
 	EventID     uint       `json:"event_id"`
-	Event       Event      `json:"event" gorm:"foreignKey:EventID"` // Needed for preloading
+	Event       Event      `json:"event" gorm:"foreignKey:EventID"`
 	Category    string     `json:"category"`
 	Price       float64    `json:"price"`
 	IsSold      bool       `json:"is_sold" gorm:"default:false"`
-	CheckedInAt *time.Time `json:"checked_in_at"` // Corrected type
-	OrderID     *uint      `json:"order_id"`
-	// Add this virtual field for the marketplace aggregation
-	Stock int `json:"stock,omitempty" gorm:"-"`
+	CheckedInAt *time.Time `json:"checked_in_at"`
+
+	OrderID *uint `json:"order_id"`
+	Stock   int   `json:"stock,omitempty" gorm:"-"`
+}
+
+func (t *Ticket) BeforeCreate(tx *gorm.DB) (err error) {
+	if t.ID == "" {
+		t.ID = uuid.New().String()
+	}
+	return
 }
 
 type CreateEventRequest struct {
