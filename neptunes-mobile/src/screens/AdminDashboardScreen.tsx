@@ -13,11 +13,19 @@ interface EventStat {
   scanned: number;
 }
 
+interface AuditLog {
+  id: number;
+  action: string;
+  details: string;
+  created_at: string;
+}
+
 interface DashboardStats {
   total_revenue: number;
   total_sold: number;
   total_scanned: number;
   events: EventStat[];
+  recent_logs: AuditLog[];
 }
 
 export default function AdminDashboardScreen({ navigation }: any) {
@@ -25,6 +33,19 @@ export default function AdminDashboardScreen({ navigation }: any) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const getLogColor = (action: string) => {
+  switch (action) {
+      case 'BULK_CHECKIN':
+      case 'MANUAL_CHECKIN':
+        return '#28a745'; // Green
+      case 'DELETE_TICKET':
+        return '#dc3545'; // Red
+      case 'CREATE_EVENT':
+        return '#007AFF'; // Blue
+      default:
+        return '#6c757d'; // Gray
+    }
+  };
 
   const fetchStats = async () => {
     try {      
@@ -113,6 +134,39 @@ export default function AdminDashboardScreen({ navigation }: any) {
             color="#6f42c1" 
           />
         </View>
+
+        <View style={styles.sectionHeader}>
+            <Text style={[styles.subHeader, { color: colors.text }]}>Recent Activity</Text>
+            <Ionicons name="list-outline" size={20} color={colors.subText} />
+        </View>
+
+        {stats?.recent_logs?.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: colors.subText, marginVertical: 20 }}>
+              No recent activity recorded.
+            </Text>
+        ) : (
+            stats?.recent_logs?.map((log) => (
+                <View 
+                    key={log.id} 
+                    style={[styles.logItem, { borderLeftColor: getLogColor(log.action) }]}
+                >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={[styles.logAction, { color: colors.text }]}>
+                            {log.action.replace('_', ' ')}
+                        </Text>
+                    </View>
+                    <Text style={{ color: colors.subText, fontSize: 13 }}>
+                        {log.details}
+                    </Text>
+                    <Text style={styles.logTime}>
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                </View>
+            ))
+        )}
+
+        {/* Extra padding at the bottom so it doesn't hit the screen edge */}
+        <View style={{ height: 40 }} />
 
         <View style={styles.sectionHeader}>
             <Text style={[styles.subHeader, { color: colors.text }]}>Individual Events</Text>
@@ -236,5 +290,25 @@ const styles = StyleSheet.create({
   progressBarFill: { height: '100%', borderRadius: 4 },
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   scannedCount: { fontSize: 11, color: 'gray', fontWeight: '500' },
-  emptyState: { padding: 40, alignItems: 'center' }
+  emptyState: { padding: 40, alignItems: 'center' },
+  logItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    backgroundColor: 'rgba(128, 128, 128, 0.05)', // Subtle background
+    borderRadius: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4, // This will be the colored "status" indicator
+  },
+  logAction: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  logTime: {
+    fontSize: 10,
+    color: 'gray',
+    marginTop: 5,
+    textAlign: 'right',
+  },
 });

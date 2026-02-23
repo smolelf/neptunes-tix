@@ -93,10 +93,19 @@ type TicketRepository interface {
 	GetMarketplace(search string) ([]Ticket, error)
 	GetUserOrders(userID uint) ([]Order, error)
 	GetOrderWithTickets(orderID string, userID uint) (Order, error)
-	GetAdminStats() (DashboardStats, error)
+	GetAdminStats() (map[string]interface{}, error)
 	CreateEventStock(req CreateEventRequest) error
 
 	ScanTicket(ticketID string) (*Ticket, error)
 
 	Transaction(fn func(txRepo TicketRepository) error) error
+}
+
+type AuditLog struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `json:"user_id"`   // The Admin/Agent who performed the action
+	Action    string    `json:"action"`    // e.g., "BULK_CHECKIN", "MANUAL_CHECKIN", "DELETE_TICKET"
+	TargetID  string    `json:"target_id"` // The Ticket UUID or User ID affected
+	Details   string    `json:"details"`   // Extra info: "Checked in 5 tickets for guest@email.com"
+	CreatedAt time.Time `json:"created_at"`
 }

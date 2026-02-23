@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../api/client';
 import * as Haptics from 'expo-haptics';
 import { Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 
 const { width } = Dimensions.get('window');
 
@@ -27,7 +28,11 @@ export default function ScannerScreen() {
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualId, setManualId] = useState('');
   const [stats, setStats] = useState<TicketStats>({ total_sold: 0, total_scanned: 0 });
-  
+  const [emailSearch, setEmailSearch] = useState('');
+  const [foundTickets, setFoundTickets] = useState<any[]>([]);
+  const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   const fetchStats = async () => {
     try {
         const response = await apiClient.get<TicketStats>('/admin/stats');
@@ -99,10 +104,51 @@ export default function ScannerScreen() {
     setManualId('');
   };
 
+  const lookupByEmail = async () => {
+  if (!emailSearch.includes('@')) return;
+  setIsSearching(true);
+  try {
+    const response = await apiClient.get(`/admin/tickets/lookup?email=${emailSearch.toLowerCase().trim()}`);
+    setFoundTickets(response.data);
+    if (response.data.length === 0) {
+      Alert.alert("Not Found", "No unscanned tickets found for this email.");
+    }
+  } catch (e) {
+    Alert.alert("Error", "Could not search by email.");
+  } finally {
+    setIsSearching(false);
+  }
+};
+
+const handleBulkCheckIn = async () => {
+    if (selectedTickets.length === 0) return;
+    setLoading(true);
+    setManualModalVisible(false);
+    try {
+      await apiClient.post('/admin/tickets/bulk-checkin', { ticket_ids: selectedTickets });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Success", `Checked in ${selectedTickets.length} guests.`);
+    } catch (e) {
+      Alert.alert("Error", "Bulk check-in failed.");
+      setLoading(false);
+    } finally {
+      setSelectedTickets([]);
+      setFoundTickets([]);
+      setEmailSearch('');
+    }
+    resetScanner();
+    setCameraActive(false);
+  };
+
+  const toggleTicketSelection = (id: string) => {
+    setSelectedTickets(prev => 
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
+    );
+  };
+
   return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {isFocused && cameraActive && !loading ? (
-          <View style={StyleSheet.absoluteFill}>
+        {isFocused && cameraActive && !loading && !manualModalVisible ? (          <View style={StyleSheet.absoluteFill}>
             <CameraView
               style={StyleSheet.absoluteFill}
               onBarcodeScanned={handleBarCodeScanned}
@@ -176,27 +222,65 @@ export default function ScannerScreen() {
           </View>
         )}
 
-        <Modal visible={manualModalVisible} animationType="slide" transparent={true}>
+        <Modal
+          visible={manualModalVisible}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setManualModalVisible(false)}
+        >
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Manual Check-in</Text>
-              <TextInput
-                style={[styles.manualInput, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Paste or type UUID"
-                placeholderTextColor={colors.subText}
-                value={manualId}
-                onChangeText={setManualId}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus={true}
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.border }]} onPress={() => setManualModalVisible(false)}>
-                  <Text style={[styles.btnText, { color: colors.text }]}>Back</Text>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, height: '70%' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Guest Lookup</Text>
+              
+              <View style={styles.searchContainer}>
+                <TextInput
+                  style={[styles.manualInput, { flex: 1, color: colors.text, borderColor: colors.border, marginBottom: 0 }]}
+                  placeholder="Guest Email Address"
+                  placeholderTextColor={colors.subText}
+                  value={emailSearch}
+                  onChangeText={setEmailSearch}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <TouchableOpacity style={styles.searchIconBtn} onPress={lookupByEmail}>
+                  {isSearching ? <ActivityIndicator size="small" color="#007AFF" /> : <Ionicons name="search" size={24} color="#007AFF" />}
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#007AFF' }]} onPress={handleManualSubmit}>
-                  <Text style={styles.btnText}>Check In</Text>
+              </View>
+
+              <ScrollView style={{ width: '100%', marginTop: 20 }}>
+                {foundTickets.map((ticket) => (
+                  <TouchableOpacity 
+                    key={ticket.id} 
+                    style={[styles.ticketSelectItem, { backgroundColor: selectedTickets.includes(ticket.id) ? 'rgba(0,122,255,0.1)' : 'transparent' }]}
+                    onPress={() => toggleTicketSelection(ticket.id)}
+                  >
+                    <View>
+                      <Text style={{ color: colors.text, fontWeight: 'bold' }}>{ticket.category}</Text>
+                      <Text style={{ color: colors.subText, fontSize: 12 }}>{ticket.event?.name}</Text>
+                    </View>
+                    <Ionicons 
+                      name={selectedTickets.includes(ticket.id) ? "checkbox" : "square-outline"} 
+                      size={24} 
+                      color={selectedTickets.includes(ticket.id) ? "#007AFF" : colors.subText} 
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={[styles.modalButtons, { marginTop: 20 }]}>
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.border }]} onPress={() => {
+                  setManualModalVisible(false);
+                  setFoundTickets([]);
+                  setEmailSearch('');
+                }}>
+                  <Text style={[styles.btnText, { color: colors.text }]}>Cancel</Text>
                 </TouchableOpacity>
+                
+                {selectedTickets.length > 0 && (
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#28a745' }]} onPress={handleBulkCheckIn}>
+                    <Text style={styles.btnText}>Check In ({selectedTickets.length})</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </KeyboardAvoidingView>
@@ -239,5 +323,17 @@ const styles = StyleSheet.create({
   manualInput: { width: '100%', height: 55, borderWidth: 1, borderRadius: 12, paddingHorizontal: 15, fontSize: 16, marginBottom: 20 },
   modalButtons: { flexDirection: 'row', gap: 15 },
   modalBtn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: 12, flex: 1, alignItems: 'center' },
-  btnText: { color: 'white', fontWeight: 'bold' }
+  btnText: { color: 'white', fontWeight: 'bold' },
+  searchContainer: { flexDirection: 'row', width: '100%', gap: 10, alignItems: 'center' },
+  searchIconBtn: { padding: 10, borderRadius: 10, backgroundColor: 'rgba(0,122,255,0.1)' },
+  ticketSelectItem: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      padding: 15, 
+      borderRadius: 12, 
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.05)'
+  },
 });

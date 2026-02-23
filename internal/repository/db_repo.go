@@ -203,39 +203,44 @@ func (d *dbRepo) GetAvailableSequential(eventID uint, category string, limit int
 
 // --- ADMIN STATS ---
 
-func (d *dbRepo) GetAdminStats() (domain.DashboardStats, error) {
-	var stats domain.DashboardStats
+func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
+	var totalRevenue float64
+	var totalSold, totalScanned int64
 
-	// Total Revenue (COALESCE handles 0.0 if no tickets sold)
-	d.db.Model(&domain.Ticket{}).
-		Where("is_sold = ?", true).
-		Select("COALESCE(SUM(price), 0)").
-		Scan(&stats.TotalRevenue)
+	// 1. Calculate Global Stats
+	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Select("SUM(price)").Row().Scan(&totalRevenue)
+	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Count(&totalSold)
+	d.db.Model(&domain.Ticket{}).Where("checked_in_at IS NOT NULL").Count(&totalScanned)
 
-	// Global Sold Count
-	d.db.Model(&domain.Ticket{}).
-		Where("is_sold = ?", true).
-		Count(&stats.TotalSold)
+	// 2. Calculate Individual Event Stats
+	type EventResult struct {
+		EventID   uint    `json:"event_id"`
+		EventName string  `json:"event_name"`
+		Revenue   float64 `json:"revenue"`
+		Sold      int64   `json:"sold"`
+		Scanned   int64   `json:"scanned"`
+	}
+	var eventStats []EventResult
 
-	// Global Scanned Count
-	d.db.Model(&domain.Ticket{}).
-		Where("checked_in_at IS NOT NULL").
-		Count(&stats.TotalScanned)
+	var recentLogs []domain.AuditLog
+	d.db.Order("created_at desc").Limit(10).Find(&recentLogs)
+	fmt.Println(recentLogs)
 
-	// Individual Event Performance Breakdown
-	err := d.db.Table("events").
-		Select(`
-			events.id as event_id, 
-			events.name as event_name, 
-			COALESCE(SUM(CASE WHEN tickets.is_sold THEN tickets.price ELSE 0 END), 0) as revenue, 
-			COUNT(CASE WHEN tickets.is_sold THEN 1 END) as sold, 
-			COUNT(tickets.checked_in_at) as scanned
-		`).
-		Joins("LEFT JOIN tickets ON tickets.event_id = events.id").
+	// Raw SQL grouping is the most efficient way to get this nested data
+	d.db.Table("tickets").
+		Select("events.id as event_id, events.name as event_name, SUM(tickets.price) as revenue, COUNT(tickets.id) as sold, COUNT(tickets.checked_in_at) as scanned").
+		Joins("join events on events.id = tickets.event_id").
+		Where("tickets.is_sold = ?", true).
 		Group("events.id, events.name").
-		Scan(&stats.Events).Error
+		Scan(&eventStats)
 
-	return stats, err
+	return map[string]interface{}{
+		"total_revenue": totalRevenue,
+		"total_sold":    totalSold,
+		"total_scanned": totalScanned,
+		"events":        eventStats,
+		"recent_logs":   recentLogs,
+	}, nil
 }
 
 // --- ORDER HELPERS ---
@@ -300,7 +305,11 @@ func (d *dbRepo) ScanTicket(ticketID string) (*domain.Ticket, error) {
 
 	// 3. Security Check: Is it a duplicate scan?
 	if ticket.CheckedInAt != nil {
-		return &ticket, fmt.Errorf("ALREADY USED: scanned at %s", ticket.CheckedInAt.Format("03:04 PM"))
+		// Calculate how long ago it was scanned
+		duration := time.Since(*ticket.CheckedInAt).Round(time.Minute)
+		return &ticket, fmt.Errorf("ALREADY USED: Scanned %v ago (at %s)",
+			duration,
+			ticket.CheckedInAt.Format("03:04 PM"))
 	}
 
 	// 4. Mark as scanned
@@ -321,4 +330,35 @@ func (d *dbRepo) GetGateStats() (int64, int64, error) {
 	d.db.Model(&domain.Ticket{}).Where("checked_in_at IS NOT NULL").Count(&scanned)
 
 	return sold, scanned, nil
+}
+
+func (d *dbRepo) GetUnscannedByEmail(email string) ([]domain.Ticket, error) {
+	var tickets []domain.Ticket
+
+	err := d.db.Preload("Event").
+		Joins("JOIN orders ON orders.id = tickets.order_id").
+		Joins("JOIN users ON users.id = orders.user_id").
+		Where("users.email = ? AND tickets.checked_in_at IS NULL AND tickets.is_sold = ?", email, true).
+		Find(&tickets).Error
+
+	return tickets, err
+}
+
+// BulkCheckIn marks multiple UUIDs as scanned at the same time
+func (d *dbRepo) BulkCheckIn(ticketIDs []string) error {
+	now := time.Now()
+	return d.db.Model(&domain.Ticket{}).
+		Where("id IN ?", ticketIDs).
+		Update("checked_in_at", now).Error
+}
+
+// --- AUDIT LOGGING ---
+func (d *dbRepo) RecordLog(userID uint, action, targetID, details string) {
+	log := domain.AuditLog{
+		UserID:   userID,
+		Action:   action,
+		TargetID: targetID,
+		Details:  details,
+	}
+	d.db.Create(&log)
 }

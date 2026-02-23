@@ -32,7 +32,7 @@ func main() {
 	}
 
 	fmt.Println("🐘 Success! Connected to PostgreSQL.")
-	db.AutoMigrate(&domain.User{}, &domain.Ticket{}, &domain.Order{}, &domain.Event{})
+	db.AutoMigrate(&domain.User{}, &domain.Ticket{}, &domain.Order{}, &domain.Event{}, &domain.AuditLog{})
 
 	repo := repository.NewDBRepo(db)
 	bookingSvc := service.NewBookingService(repo, repo)
@@ -175,16 +175,15 @@ func main() {
 	adminAuth := r.Group("/")
 	adminAuth.Use(middleware.AuthRequired())
 	{
+		// In the adminAuth group in main.go
 		adminAuth.GET("/admin/stats", middleware.RolesRequired("agent", "admin"), func(c *gin.Context) {
-			sold, scanned, err := repo.GetGateStats()
+			stats, err := repo.GetAdminStats() // Now returns the full map
 			if err != nil {
-				c.JSON(500, gin.H{"error": "Failed to fetch stats"})
+				c.JSON(500, gin.H{"error": "Failed to fetch dashboard data"})
 				return
 			}
-			c.JSON(200, gin.H{
-				"total_sold":    sold,
-				"total_scanned": scanned,
-			})
+
+			c.JSON(200, stats)
 		})
 		// Common Agent/Admin Routes
 		adminAuth.PATCH("/tickets/:id/checkin", middleware.RolesRequired("agent", "admin"), func(c *gin.Context) {
@@ -205,6 +204,38 @@ func main() {
 				return
 			}
 			c.JSON(200, users)
+		})
+
+		adminAuth.GET("/admin/tickets/lookup", middleware.RolesRequired("agent", "admin"), func(c *gin.Context) {
+			email := c.Query("email")
+			tickets, err := repo.GetUnscannedByEmail(email)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Database error"})
+				return
+			}
+			c.JSON(200, tickets)
+		})
+
+		// 2. Process the multi-select check-in
+		adminAuth.POST("/admin/tickets/bulk-checkin", middleware.RolesRequired("agent", "admin"), func(c *gin.Context) {
+
+			userID := c.MustGet("userID").(uint)
+			var req struct {
+				TicketIDs []string `json:"ticket_ids" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "No tickets selected"})
+				return
+			}
+			if err := repo.BulkCheckIn(req.TicketIDs); err != nil {
+				c.JSON(500, gin.H{"error": "Failed to update tickets"})
+				return
+			}
+
+			details := fmt.Sprintf("Checked in %d tickets via email lookup", len(req.TicketIDs))
+			repo.RecordLog(userID, "BULK_CHECKIN", "MULTIPLE", details)
+
+			c.JSON(200, gin.H{"message": "Checked in " + fmt.Sprint(len(req.TicketIDs)) + " guests!"})
 		})
 
 		// Admin Only Routes
