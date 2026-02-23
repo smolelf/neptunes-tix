@@ -20,6 +20,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import CreateEventScreen from './src/screens/CreateEventScreen';
+import PointsHistoryScreen from './src/screens/PointsHistoryScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -43,7 +44,7 @@ function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);
   const { user } = useContext(AuthContext);
 
-  const displayName = user?.user_name || user?.user_email?.split('@')[0] || 'User';
+  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
 
   return (
     <Tab.Navigator 
@@ -88,7 +89,7 @@ function MainTabs() {
       <Tab.Screen name="Wallet" component={MyTicketsScreen} />
       
       {/* Role-based conditional rendering */}
-      {(user?.user_role === 'agent' || user?.user_role === 'admin') && (
+      {(user?.role === 'agent' || user?.role === 'admin') && (
         <Tab.Screen name="Scanner" component={ScannerScreen} />
       )}
 
@@ -149,6 +150,15 @@ function AppNavigator() {
           component={CreateEventScreen} 
           options={{
             title: 'Launch New Event',
+            // This forces the 'canvas' behind the screen to match your theme
+            contentStyle: { backgroundColor: colors.background }
+           }} 
+        />
+        <Stack.Screen 
+          name="PointsHistory" 
+          component={PointsHistoryScreen} 
+          options={{ 
+            title: 'Points History',
             // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background }
            }} 

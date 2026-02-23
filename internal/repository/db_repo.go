@@ -199,7 +199,39 @@ func (d *dbRepo) GetAvailableSequential(eventID uint, category string, limit int
 	return tickets, err
 }
 
-// --- ADMIN STATS ---
+func (d *dbRepo) CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Get the price for this specific tier
+		var price float64
+		if err := tx.Table("tickets").
+			Select("price").
+			Where("event_id = ? AND category = ?", eventID, category).
+			Limit(1).
+			Scan(&price).Error; err != nil {
+			return err
+		}
+
+		// 2. Calculate actual total
+		totalSpent := price * float64(quantity)
+		pointsToEarn := int(totalSpent * 10) // RM 1 = 10 Points
+
+		// 3. Mark tickets as sold and link to user (Simplified for this snippet)
+		// ... (Your existing ticket update logic goes here) ...
+
+		// 4. Update User Points
+		if err := tx.Model(&domain.User{}).Where("id = ?", userID).
+			Update("points", gorm.Expr("points + ?", pointsToEarn)).Error; err != nil {
+			return err
+		}
+
+		// 5. Record Point Transaction
+		return tx.Create(&domain.PointTransaction{
+			UserID: userID,
+			Amount: pointsToEarn,
+			Reason: fmt.Sprintf("Purchased %d x %s for Event ID %d", quantity, category, eventID),
+		}).Error
+	})
+}
 
 // --- ADMIN STATS ---
 
@@ -344,7 +376,6 @@ func (d *dbRepo) GetUnscannedByEmail(email string) ([]domain.Ticket, error) {
 	return tickets, err
 }
 
-// BulkCheckIn marks multiple UUIDs as scanned at the same time
 func (d *dbRepo) BulkCheckIn(ticketIDs []string) error {
 	now := time.Now()
 	return d.db.Model(&domain.Ticket{}).
@@ -361,4 +392,61 @@ func (d *dbRepo) RecordLog(userID uint, action, targetID, details string) {
 		Details:  details,
 	}
 	d.db.Create(&log)
+}
+
+// --- POINTS & REWARDS ---
+func (d *dbRepo) GetPointHistory(userID uint) ([]domain.PointTransaction, error) {
+	var history []domain.PointTransaction
+
+	// Sort by most recent first
+	err := d.db.Where("user_id = ?", userID).
+		Order("created_at desc").
+		Limit(50).
+		Preload("Order").
+		Find(&history).Error
+
+	return history, err
+}
+
+// Add this helper to db_repo.go
+func (d *dbRepo) awardPoints(tx *gorm.DB, userID uint, amount float64, reason string) error {
+	points := int(amount * 10)
+
+	// Update user
+	if err := tx.Model(&domain.User{}).Where("id = ?", userID).
+		Update("points", gorm.Expr("points + ?", points)).Error; err != nil {
+		return err
+	}
+
+	// Create log
+	return tx.Create(&domain.PointTransaction{
+		UserID: userID,
+		Amount: points,
+		Reason: reason,
+	}).Error
+}
+
+func (d *dbRepo) IncrementUserPoints(userID uint, amount int, reason string, orderID *uint) error {
+	// 1. Update User balance
+	err := d.db.Model(&domain.User{}).Where("id = ?", userID).
+		Update("points", gorm.Expr("points + ?", amount)).Error
+	if err != nil {
+		return err
+	}
+
+	// 2. Determine type based on amount
+	txType := "earned"
+	if amount < 0 {
+		txType = "redeemed"
+	}
+
+	// 3. Create the history record with the Order Link
+	return d.db.Create(&domain.PointTransaction{
+		UserID:    userID,
+		Amount:    amount,
+		Reason:    reason,
+		OrderID:   orderID, // Now stored in DB!
+		Type:      txType,
+		CreatedAt: time.Now(),
+	}).Error
 }

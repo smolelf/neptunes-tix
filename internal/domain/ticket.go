@@ -96,6 +96,8 @@ type TicketRepository interface {
 	GetAdminStats() (map[string]interface{}, error)
 	CreateEventStock(req CreateEventRequest) error
 
+	IncrementUserPoints(userID uint, amount int, reason string, orderID *uint) error
+	RecordLog(userID uint, action string, targetID string, details string)
 	ScanTicket(ticketID string) (*Ticket, error)
 
 	Transaction(fn func(txRepo TicketRepository) error) error

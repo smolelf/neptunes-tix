@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
 import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons';
+import { AuthContext } from '../context/AuthContext';
 
 interface Ticket {
     ID: number; 
@@ -56,6 +57,8 @@ export default function TicketListScreen() {
         fetchTickets();
     }, []);
 
+    const { refreshUser } = useContext(AuthContext);
+
     const handleBulkBook = async () => {
         if (!selectedTicket) return;
         
@@ -71,7 +74,9 @@ export default function TicketListScreen() {
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-      
+            
+            await refreshUser(); // Refresh user data to get updated points or bookings
+            
             Alert.alert("Success", `Booked ${quantity} tickets for ${selectedTicket.event?.name}`);
             setSelectedTicket(null);
             setQuantity(1);

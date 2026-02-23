@@ -32,7 +32,15 @@ func main() {
 	}
 
 	fmt.Println("🐘 Success! Connected to PostgreSQL.")
-	db.AutoMigrate(&domain.User{}, &domain.Ticket{}, &domain.Order{}, &domain.Event{}, &domain.AuditLog{})
+
+	db.AutoMigrate(
+		&domain.User{},
+		&domain.Ticket{},
+		&domain.Order{},
+		&domain.Event{},
+		&domain.AuditLog{},
+		&domain.PointTransaction{},
+	)
 
 	repo := repository.NewDBRepo(db)
 	bookingSvc := service.NewBookingService(repo, repo)
@@ -168,6 +176,30 @@ func main() {
 				return
 			}
 			c.JSON(200, gin.H{"message": "Successfully booked tickets!"})
+		})
+
+		userAuth.GET("/users/me", func(c *gin.Context) {
+			userID := c.MustGet("userID").(uint)
+
+			// Make sure your repo has a method to get the User by ID
+			user, err := repo.GetUserByID(fmt.Sprintf("%d", userID))
+			if err != nil {
+				c.JSON(404, gin.H{"error": "User not found"})
+				return
+			}
+			c.JSON(200, user)
+		})
+
+		// 2. Fetch the Points Transaction History (for PointsHistoryScreen)
+		userAuth.GET("/users/me/points", func(c *gin.Context) {
+			userID := c.MustGet("userID").(uint)
+
+			history, err := repo.GetPointHistory(userID)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Failed to load history"})
+				return
+			}
+			c.JSON(200, history)
 		})
 	}
 

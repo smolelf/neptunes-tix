@@ -71,15 +71,13 @@ func (s *BookingService) CreateTicket(eventID uint, category string, price float
 // Change eventName string -> eventID uint
 func (s *BookingService) BookTickets(userID uint, eventID uint, category string, quantity int) error {
 	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-
-		// 1. Pass the eventID (uint) instead of the name
+		// 1. Get tickets
 		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
 		}
-
 		if len(tickets) < quantity {
-			return errors.New("insufficient tickets available for this category")
+			return errors.New("insufficient tickets available")
 		}
 
 		// 2. Calculate total price
@@ -98,13 +96,23 @@ func (s *BookingService) BookTickets(userID uint, eventID uint, category string,
 			return err
 		}
 
-		// 4. Link each ticket to the Order ID
+		// 🚀 4. AWARD POINTS
+		pointsToEarn := int(total * 10)
+		// This call is what was missing!
+		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, "Ticket Purchase", &order.ID); err != nil {
+			return err
+		}
+
+		// 5. Audit Log (Optional but recommended)
+		txRepo.RecordLog(userID, "POINTS_EARNED", fmt.Sprintf("%d", order.ID),
+			fmt.Sprintf("Earned %d points", pointsToEarn))
+
+		// 6. Update Tickets
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &order.ID
 		}
 
-		// 5. Batch update
 		return txRepo.UpdateTicketBatch(tickets)
 	})
 }
@@ -219,7 +227,7 @@ func (s *BookingService) UpdateOwnProfile(userID uint, name, email string) error
 func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error {
 	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
 
-		// 1. Get the Sequential Tickets using the EventID
+		// 1. Get the Sequential Tickets
 		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
@@ -238,13 +246,19 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 		newOrder := &domain.Order{
 			UserID:      userID,
 			TotalAmount: total,
-			Status:      "paid", // Updated status for clarity
+			Status:      "paid",
 		}
 		if err := txRepo.CreateOrder(newOrder); err != nil {
 			return err
 		}
 
-		// 4. Update the tickets with OrderID and set IsSold = true
+		// 🚀 4. AWARD POINTS (THE MISSING LINK)
+		pointsToEarn := int(total * 10)
+		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, fmt.Sprintf("Bought %d tickets on %d", quantity), &newOrder.ID); err != nil {
+			return err
+		}
+
+		// 5. Update the tickets
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &newOrder.ID
@@ -252,4 +266,10 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 
 		return txRepo.UpdateTicketBatch(tickets)
 	})
+}
+
+func (s *BookingService) RedeemPoints(userID uint, pointsToSpend int) error {
+	// We pass nil for OrderID because it's a general redemption, or
+	// pass the ID of the order being discounted!
+	return s.ticketRepo.IncrementUserPoints(userID, -pointsToSpend, "Points Redemption", nil)
 }

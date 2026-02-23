@@ -1,10 +1,11 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native'; // Changed Switch source
+import React, { useContext, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert,
+  Switch, ScrollView, RefreshControl } from 'react-native'; // Changed Switch source
 import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 // 1. Updated Helper Component to accept textColor
 const ProfileItem = ({ icon, label, value, textColor }: any) => (
@@ -18,10 +19,24 @@ const ProfileItem = ({ icon, label, value, textColor }: any) => (
 );
 
 export default function ProfileScreen() { // Removed { navigation } from props to use hook
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, refreshUser } = useContext(AuthContext);
   const { colors, isDark, toggleTheme } = useContext(ThemeContext);
-  const navigation = useNavigation<any>(); // Use the hook for more reliable stack navigation
+  const navigation = useNavigation<any>();
+  const [refreshing, setRefreshing] = useState(false);
   
+  useFocusEffect(
+    useCallback(() => {
+      refreshUser();
+    }, [])
+  );
+
+  // 🚀 Manual pull-to-refresh logic
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshUser();
+    setRefreshing(false);
+  };
+
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
@@ -40,14 +55,43 @@ export default function ProfileScreen() { // Removed { navigation } from props t
     ]);
   };
 
+  const points = user?.points || 0;
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: colors.background }]}
+      // 🚀 Added pull-to-refresh here
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />
+      }
+    >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
       <View style={styles.header}>
         <Ionicons name="person-circle" size={100} color="#007AFF" />
-        <Text style={[styles.name, { color: colors.text }]}>{user?.user_name || 'Neptunes User'}</Text>
+        <Text style={[styles.name, { color: colors.text }]}>
+          {user?.user_name || user?.name || 'Neptunes User'}
+        </Text>
       </View>
+
+      {/* Points Section */}
+      <TouchableOpacity 
+        style={[styles.loyaltyCard, { backgroundColor: isDark ? '#333' : '#FFD60A' }]}
+        onPress={() => navigation.navigate('PointsHistory')}
+      >
+        <View style={styles.loyaltyLeft}>
+          <View style={styles.starCircle}>
+            <Ionicons name="star" size={24} color={isDark ? '#FFD60A' : '#000'} />
+          </View>
+          <View>
+            <Text style={[styles.loyaltyLabel, { color: isDark ? '#aaa' : '#000' }]}>LOYALTY POINTS</Text>
+            <Text style={[styles.loyaltyValue, { color: isDark ? '#fff' : '#000' }]}>
+              {points.toLocaleString()}
+            </Text>
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={isDark ? '#fff' : '#000'} />
+      </TouchableOpacity>
 
       {/* Dark Mode Toggle */}
       <View style={[styles.infoContainer, { backgroundColor: colors.card, marginBottom: 20 }]}>
@@ -66,13 +110,13 @@ export default function ProfileScreen() { // Removed { navigation } from props t
   
       {/* User Info Section */}
       <View style={[styles.infoContainer, { backgroundColor: colors.card }]}>
-        <ProfileItem icon="person-outline" label="Name" value={user?.user_name || 'Not Set'} textColor={colors.text} />
-        <ProfileItem icon="mail-outline" label="Email" value={user?.user_email} textColor={colors.text} />
-        <ProfileItem icon="shield-checkmark-outline" label="Role" value={user?.user_role?.toUpperCase()} textColor={colors.text} />
+        <ProfileItem icon="person-outline" label="Name" value={user?.name || 'Not Set'} textColor={colors.text} />
+        <ProfileItem icon="mail-outline" label="Email" value={user?.email} textColor={colors.text} />
+        <ProfileItem icon="shield-checkmark-outline" label="Role" value={user?.role?.toUpperCase()} textColor={colors.text} />
       </View>
   
       {/* MANAGEMENT SECTION */}
-      {(user?.user_role === 'admin') && (
+      {(user?.role === 'admin') && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.subText }]}>MANAGEMENT</Text>
           
@@ -95,7 +139,7 @@ export default function ProfileScreen() { // Removed { navigation } from props t
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -117,7 +161,7 @@ const styles = StyleSheet.create({
     infoContainer: {
       borderRadius: 15,
       padding: 15,
-      marginBottom: 30,
+      marginBottom: 10,
       // Adding a subtle shadow for light mode
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
@@ -145,7 +189,7 @@ const styles = StyleSheet.create({
       fontWeight: 'bold', 
       fontSize: 16 
     },
-    section: { marginTop: 25 },
+    section: { marginTop: 10, marginBottom: 20 },
     sectionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 10, marginLeft: 5, textTransform: 'uppercase' },
     menuItem: {
       flexDirection: 'row',
@@ -157,4 +201,28 @@ const styles = StyleSheet.create({
     menuLeft: { flexDirection: 'row', alignItems: 'center' },
     iconBg: { padding: 8, borderRadius: 8, marginRight: 15 },
     menuText: { fontSize: 16, fontWeight: '500' },
+    loyaltyCard: {
+      padding: 20,
+      borderRadius: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 25,
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+    },
+    loyaltyLeft: { flexDirection: 'row', alignItems: 'center' },
+    starCircle: { 
+      width: 45, 
+      height: 45, 
+      borderRadius: 22.5, 
+      backgroundColor: 'rgba(255,255,255,0.3)', 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      marginRight: 15 
+    },
+    loyaltyLabel: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
+    loyaltyValue: { fontSize: 26, fontWeight: '900' },
 });
