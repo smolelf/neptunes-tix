@@ -11,10 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// type TicketService struct {
-// 	repo domain.TicketRepository
-// }
-
 type BookingService struct {
 	userRepo   domain.UserRepository
 	ticketRepo domain.TicketRepository
@@ -272,4 +268,108 @@ func (s *BookingService) RedeemPoints(userID uint, pointsToSpend int) error {
 	// We pass nil for OrderID because it's a general redemption, or
 	// pass the ID of the order being discounted!
 	return s.ticketRepo.IncrementUserPoints(userID, -pointsToSpend, "Points Redemption", nil)
+}
+
+func (s *BookingService) InitiatePayment(userID uint, eventID uint, category string, quantity int, redeemPoints int) (string, uint, error) {
+	var mockURL string
+	var capturedID uint
+
+	err := s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 1. Check if user exists and has enough points
+		user, err := s.userRepo.GetUserByID(fmt.Sprint(userID))
+		if err != nil {
+			return err
+		}
+		if user.Points < redeemPoints {
+			return fmt.Errorf("insufficient points for redemption")
+		}
+
+		// 2. Find Available Tickets
+		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
+		if err != nil {
+			return err
+		}
+		if len(tickets) < quantity {
+			return fmt.Errorf("tickets no longer available")
+		}
+
+		// 3. Calculate Pricing
+		var subtotal float64
+		for _, t := range tickets {
+			subtotal += t.Price
+		}
+		discount := float64(redeemPoints) / 100.0
+		finalAmount := subtotal - discount
+		if finalAmount < 0 {
+			finalAmount = 0
+		}
+
+		// 4. Create the PENDING Order (Initial Insert)
+		newOrder := &domain.Order{
+			UserID:        userID,
+			TotalAmount:   finalAmount,
+			Status:        "pending",
+			PointsApplied: redeemPoints,
+			PointsEarned:  int(finalAmount * 10),
+		}
+
+		// GORM creates the record and populates newOrder.ID here
+		if err := txRepo.CreateOrder(newOrder); err != nil {
+			return err
+		}
+		capturedID = newOrder.ID
+
+		// 5. Link Tickets to Order (Locking)
+		for i := range tickets {
+			tickets[i].OrderID = &capturedID
+		}
+		if err := txRepo.UpdateTicketBatch(tickets); err != nil {
+			return err
+		}
+
+		// 6. Generate the URL using the newly minted ID
+		mockURL = fmt.Sprintf("%s/mock-billplz/%d", os.Getenv("TEMP_URL"), capturedID)
+
+		// 7. 🔥 THE FIX: Targeted update to avoid "Duplicate Key" errors.
+		// This tells GORM to only touch the payment_url field for this specific ID.
+		return txRepo.UpdateOrderFields(capturedID, map[string]interface{}{
+			"payment_url": mockURL,
+		})
+	})
+
+	return mockURL, capturedID, err
+}
+
+func (s *BookingService) FinalizePayment(orderID string) error {
+	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 1. Get the Order with Tickets preloaded
+		order, err := txRepo.GetOrderById(orderID)
+		if err != nil || order.Status != "pending" {
+			return errors.New("order not found or not pending")
+		}
+
+		// 2. Mark Order as PAID (Using targeted update is safer here too)
+		err = txRepo.UpdateOrderFields(order.ID, map[string]interface{}{
+			"status": "paid",
+		})
+		if err != nil {
+			return err
+		}
+
+		// 3. Mark Tickets as SOLD
+		for i := range order.Tickets {
+			order.Tickets[i].IsSold = true
+		}
+		if err := txRepo.UpdateTicketBatch(order.Tickets); err != nil {
+			return err
+		}
+
+		// 4. Finalize Points
+		if order.PointsApplied > 0 {
+			txRepo.IncrementUserPoints(order.UserID, -order.PointsApplied, "Used points for discount", &order.ID)
+		}
+		txRepo.IncrementUserPoints(order.UserID, order.PointsEarned, "Earned from purchase", &order.ID)
+
+		return nil
+	})
 }

@@ -163,18 +163,21 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 	query := d.db.Table("tickets").
 		Select("tickets.event_id, events.name as event_name, events.venue as event_venue, events.date as event_date, tickets.category, tickets.price, COUNT(*) AS stock").
 		Joins("JOIN events ON events.id = tickets.event_id").
-		Where("tickets.is_sold = ?", false).
+		Where("tickets.is_sold = ? AND tickets.order_id IS NULL", false).
 		Group("tickets.event_id, events.name, events.venue, events.date, tickets.category, tickets.price")
 
 	if search != "" {
 		query = query.Where("events.name ILIKE ?", "%"+search+"%")
 	}
 
-	err := query.Scan(&results).Error
+	if err := query.Scan(&results).Error; err != nil {
+		return nil, err
+	}
 
-	tickets := []domain.Ticket{}
+	// Fixed: Only declare this variable ONCE
+	marketplaceTickets := make([]domain.Ticket, 0)
 	for _, r := range results {
-		tickets = append(tickets, domain.Ticket{
+		marketplaceTickets = append(marketplaceTickets, domain.Ticket{
 			EventID:  r.EventID,
 			Category: r.Category,
 			Price:    r.Price,
@@ -186,7 +189,7 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 			},
 		})
 	}
-	return tickets, err
+	return marketplaceTickets, nil
 }
 
 func (d *dbRepo) GetAvailableSequential(eventID uint, category string, limit int) ([]domain.Ticket, error) {
@@ -231,6 +234,31 @@ func (d *dbRepo) CreateBulkBooking(userID uint, eventID uint, category string, q
 			Reason: fmt.Sprintf("Purchased %d x %s for Event ID %d", quantity, category, eventID),
 		}).Error
 	})
+}
+
+func (d *dbRepo) CleanupExpiredOrders(timeout time.Duration) (int64, error) {
+	// Find orders that are 'pending' and older than the timeout
+	expirationTime := time.Now().Add(-timeout)
+
+	var expiredOrders []domain.Order
+	d.db.Where("status = ? AND created_at < ?", "pending", expirationTime).Find(&expiredOrders)
+
+	if len(expiredOrders) == 0 {
+		return 0, nil
+	}
+
+	var totalReleased int64
+	for _, order := range expiredOrders {
+		// 1. Unlink tickets from this order
+		// We set order_id to NULL so they show up in Marketplace again
+		res := d.db.Model(&domain.Ticket{}).Where("order_id = ?", order.ID).Update("order_id", nil)
+		totalReleased += res.RowsAffected
+
+		// 2. Mark order as expired so it doesn't get picked up again
+		d.db.Model(&order).Update("status", "expired")
+	}
+
+	return totalReleased, nil
 }
 
 // --- ADMIN STATS ---
@@ -317,6 +345,22 @@ func (d *dbRepo) Transaction(fn func(domain.TicketRepository) error) error {
 		txRepo := NewDBRepo(tx)
 		return fn(txRepo)
 	})
+}
+
+func (d *dbRepo) GetOrderById(id string) (*domain.Order, error) {
+	var order domain.Order
+	// 🚀 CRITICAL: We MUST Preload Tickets so FinalizePayment can mark them as sold
+	err := d.db.Preload("Tickets").First(&order, "id = ?", id).Error
+	return &order, err
+}
+
+func (d *dbRepo) UpdateOrder(order *domain.Order) error {
+	return d.db.Save(order).Error
+}
+
+func (d *dbRepo) UpdateOrderFields(orderID uint, fields map[string]interface{}) error {
+	// This forces a SQL UPDATE statement instead of an INSERT
+	return d.db.Model(&domain.Order{}).Where("id = ?", orderID).Updates(fields).Error
 }
 
 // --- SCANNING ---

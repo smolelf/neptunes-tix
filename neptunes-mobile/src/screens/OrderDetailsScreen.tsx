@@ -4,17 +4,22 @@ import QRCode from 'react-native-qrcode-svg';
 import { ThemeContext } from '../context/ThemeContext';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 
 export default function OrderDetailsScreen({ route }: any) {
   const { colors } = useContext(ThemeContext);
   const [order, setOrder] = useState(route.params.order); 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Status checks
+  const isPaid = order.status === 'paid';
+  const isPending = order.status === 'pending';
+  const isCancelled = order.status === 'cancelled';
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Re-fetch order to check if tickets were scanned
-      const response = await apiClient.get(`/orders/${order.ID}`);
+      const response = await apiClient.get(`/orders/${order.id}`);
       setOrder(response.data); 
     } catch (error) {
       console.error("Refresh failed:", error);
@@ -29,12 +34,31 @@ export default function OrderDetailsScreen({ route }: any) {
         data={order.tickets}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        keyExtractor={(item) => item.id} // Updated to lowercase 'id' for UUID string
+        keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 20 }}
         ListHeaderComponent={() => (
           <View style={styles.header}>
-            <Text style={[styles.orderTitle, { color: colors.text }]}>Order #{order.ID}</Text>
-            <Text style={{ color: colors.subText }}>Present these QR codes at the entrance</Text>
+            <Text style={[styles.orderTitle, { color: colors.text }]}>Order #{order.id}</Text>
+            
+            {/* 🛑 Status Alerts */}
+            {isPending && (
+                <TouchableOpacity 
+                    style={styles.pendingBanner} 
+                    onPress={() => order.payment_url && WebBrowser.openBrowserAsync(order.payment_url)}
+                >
+                    <Ionicons name="card-outline" size={20} color="#fff" />
+                    <Text style={styles.bannerText}>Payment Pending. Tap to Pay Now.</Text>
+                </TouchableOpacity>
+            )}
+
+            {isCancelled && (
+                <View style={[styles.pendingBanner, { backgroundColor: '#ff3b30' }]}>
+                    <Ionicons name="close-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.bannerText}>Order Expired. Tickets were released.</Text>
+                </View>
+            )}
+
+            {isPaid && <Text style={{ color: colors.subText }}>Present these QR codes at the entrance</Text>}
           </View>
         )}
         renderItem={({ item, index }) => {
@@ -45,56 +69,62 @@ export default function OrderDetailsScreen({ route }: any) {
             <View style={[
                 styles.ticketCard, 
                 { backgroundColor: colors.card },
-                isScanned && { opacity: 0.6 }
+                (isScanned || !isPaid) && { opacity: 0.6 } // Dim if not paid
               ]}>
                 
-                {/* Visual side-notches */}
                 <View style={[styles.notch, styles.notchLeft, { backgroundColor: colors.background }]} />
                 <View style={[styles.notch, styles.notchRight, { backgroundColor: colors.background }]} />
 
+                {/* 🔒 Locked/Void Overlays */}
                 {isScanned && (
                   <View style={styles.scannedOverlay}>
                     <Text style={styles.scannedText}>VOID / USED</Text>
                   </View>
                 )}
 
+                {isPending && (
+                   <View style={styles.lockedOverlay}>
+                        <Ionicons name="lock-closed" size={40} color="#fff" />
+                        <Text style={styles.lockedText}>AWAITING PAYMENT</Text>
+                   </View>
+                )}
+
+                {isCancelled && (
+                   <View style={[styles.lockedOverlay, { backgroundColor: 'rgba(255, 59, 48, 0.7)' }]}>
+                        <Ionicons name="trash-outline" size={40} color="#fff" />
+                        <Text style={styles.lockedText}>ORDER CANCELLED</Text>
+                   </View>
+                )}
+
                 <View style={styles.ticketHeader}>
-                  <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>
-                    {eventName}
-                  </Text>
+                  <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>{eventName}</Text>
                   <Text style={styles.paxLabel}>TICKET {index + 1} OF {order.tickets.length}</Text>
                 </View>
                 
                 <View style={styles.qrContainer}>
-                  <View style={styles.whiteBox}>
+                  <View style={[styles.whiteBox, !isPaid && { opacity: 0.1 }]}> 
                     <QRCode 
-                        value={item.id} // Sending the UUID string
+                        value={isPaid ? item.id : "LOCKED"} // 🛡️ Hide real UUID if not paid
                         size={180} 
                         color="black"
                         backgroundColor="white"
                     />
                   </View>
-                  {/* Showing the last 8 chars of UUID as a 'Serial' for easier human reading */}
                   <Text style={[styles.ticketId, { color: colors.subText }]}>
-                    REF: ...{item.id.slice(-8).toUpperCase()}
+                    {isPaid ? `REF: ...${item.id.slice(-8).toUpperCase()}` : "REF: UNCONFIRMED"}
                   </Text>
                 </View>
 
                 <View style={styles.footer}>
-                    <Text style={[styles.category, { color: colors.text }]}>
-                        {item.category}
-                    </Text>
+                    <Text style={[styles.category, { color: colors.text }]}>{item.category}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <Ionicons 
-                            name={isScanned ? "checkmark-circle" : "time-outline"} 
+                            name={isScanned ? "checkmark-circle" : (isPaid ? "checkmark-circle" : "time-outline")} 
                             size={16} 
-                            color={isScanned ? "#8e8e93" : "#28a745"} 
+                            color={isPaid ? "#28a745" : "#ff9500"} 
                         />
-                        <Text style={[
-                            styles.status, 
-                            isScanned ? { color: '#8e8e93' } : { color: '#28a745' }
-                        ]}>
-                            {isScanned ? "CHECKED IN" : "READY"}
+                        <Text style={[styles.status, { color: isPaid ? "#28a745" : "#ff9500" }]}>
+                            {isScanned ? "USED" : (isPaid ? "READY" : "PENDING")}
                         </Text>
                     </View>
                 </View>
@@ -169,4 +199,39 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   scannedText: { color: '#fff', fontWeight: '900', fontSize: 22, letterSpacing: 2 },
+  pendingBanner: {
+    backgroundColor: '#ff9500',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 15,
+    width: '100%',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  bannerText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  lockedOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  lockedText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 18,
+    marginTop: 10,
+    letterSpacing: 1,
+  },
 });

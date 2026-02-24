@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"neptunes-tix/internal/domain"
 	"neptunes-tix/internal/middleware"
@@ -46,6 +47,18 @@ func main() {
 	bookingSvc := service.NewBookingService(repo, repo)
 
 	r := gin.Default()
+
+	// Start a background worker to clean up expired reservations every minute
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			// Set timeout to 15 minutes
+			released, err := repo.CleanupExpiredOrders(15 * time.Minute)
+			if err == nil && released > 0 {
+				fmt.Printf("🧹 Cleanup: Released %d tickets from expired orders\n", released)
+			}
+		}
+	}()
 
 	// --- 🔓 PUBLIC ROUTES ---
 	r.POST("/login", func(c *gin.Context) {
@@ -106,6 +119,66 @@ func main() {
 			return
 		}
 		c.JSON(200, gin.H{"data": tickets})
+	})
+
+	// BILLING & CHECKOUT ROUTES
+
+	r.POST("/payments/webhook", func(c *gin.Context) {
+		// Billplz sends data like 'id', 'paid', 'order_id'
+		orderID := c.PostForm("order_id")
+		isPaid := c.PostForm("paid") == "true"
+
+		if isPaid {
+			// 1. Mark Order as PAID
+			// 2. Finalize Point Deduction (Redemption)
+			// 3. Award NEW Points for the cash spent
+			// 4. Issue Tickets
+			bookingSvc.FinalizePayment(orderID)
+		}
+
+		c.Status(200)
+	})
+
+	// 1. Show the Mock Billplz Page
+	r.GET("/mock-billplz/:id", func(c *gin.Context) {
+		orderID := c.Param("id")
+
+		// We can use a simple HTML string for the mock
+		html := fmt.Sprintf(`
+        <html>
+            <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1>Mock Billplz Gateway</h1>
+                <p>Order ID: <strong>%s</strong></p>
+                <div style="margin-top: 20px;">
+                    <form action="/mock-billplz/pay/%s" method="POST">
+                        <button type="submit" style="background: #28a745; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 18px; cursor: pointer;">
+                            Simulate Successful Payment
+                        </button>
+                    </form>
+                    <br/>
+                    <a href="#" style="color: red;">Cancel Payment</a>
+                </div>
+            </body>
+        </html>
+    `, orderID, orderID)
+
+		c.Data(200, "text/html; charset=utf-8", []byte(html))
+	})
+
+	// 2. Handle the "Payment Success" action
+	r.POST("/mock-billplz/pay/:id", func(c *gin.Context) {
+		orderID := c.Param("id")
+
+		// Call our Finalize function
+		err := bookingSvc.FinalizePayment(orderID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		// In a real Billplz flow, this would be the 'redirect_url'
+		// leading back to your React Native app's Success screen
+		c.Writer.Write([]byte("<h1>Payment Successful!</h1><p>You can close this window and return to the app.</p>"))
 	})
 
 	// --- 🛡️ AUTHENTICATED USER ROUTES ---
@@ -200,6 +273,51 @@ func main() {
 				return
 			}
 			c.JSON(200, history)
+		})
+
+		// 1. Create Bill (React Native hits this)
+		userAuth.POST("/checkout", func(c *gin.Context) {
+			var req struct {
+				EventID      uint   `json:"event_id"`
+				Category     string `json:"category"`
+				Quantity     int    `json:"quantity"`
+				RedeemPoints int    `json:"redeem_points"`
+			}
+			c.ShouldBindJSON(&req)
+			userID := c.MustGet("userID").(uint)
+
+			// Call service to create "Pending" order
+			// This function should return a URL for the user to visit
+			paymentURL, orderID, err := bookingSvc.InitiatePayment(userID, req.EventID, req.Category, req.Quantity, req.RedeemPoints)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(200, gin.H{
+				"payment_url": paymentURL,
+				"order_id":    orderID,
+			}) // You can also return the order ID if needed})
+		})
+
+		userAuth.GET("/orders/:id/status", func(c *gin.Context) {
+			id := c.Param("id")
+			userID := c.MustGet("userID").(uint)
+
+			// Use the existing repo method that checks if the order belongs to the user
+			order, err := repo.GetOrderWithTickets(id, userID)
+			if err != nil {
+				c.JSON(404, gin.H{"error": "Order not found"})
+				return
+			}
+
+			// Return all info needed by TicketListScreen verifyPaymentStatus
+			c.JSON(200, gin.H{
+				"id":            order.ID,
+				"status":        order.Status, // 'pending', 'paid', or 'cancelled'
+				"total":         order.TotalAmount,
+				"points_earned": order.PointsEarned,
+			})
 		})
 	}
 

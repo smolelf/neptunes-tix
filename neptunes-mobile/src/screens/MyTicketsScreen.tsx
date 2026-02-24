@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useContext } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useState, useContext,
+  useCallback, useRef } from 'react';
+import { View, Text, FlatList, StyleSheet,
+  ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import * as WebBrowser from 'expo-web-browser';
 
 
 const { width } = Dimensions.get('window');
@@ -19,10 +22,12 @@ interface Ticket {
 }
   
 interface Order {
-    ID: number;
-    CreatedAt: string;
+    id: number;
+    created_at: string;
     tickets: Ticket[]; 
     total_amount: number;
+    status: string;
+    payment_url: string;
 }
 
 export default function MyTicketsScreen() {
@@ -32,17 +37,37 @@ export default function MyTicketsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation<any>();
 
-  const fetchMyOrders = async () => {
-    try {
-      // Endpoint returns Orders preloaded with Tickets and Events
-      const response = await apiClient.get<Order[]>('/my-orders');
-      setMyOrders(response.data || []);
-    } catch (error) {
-      console.error("Fetch orders error:", error);
-    } finally {
-      setLoading(false);
-    }
+  const lastFetchTime = useRef<number>(0);
+  const THROTTLE_MS = 30000; // 30 seconds
+
+  const fetchMyOrders = async (showLoading = true, isBackground = false) => {
+      try {
+          if (showLoading) setLoading(true);
+          if (isBackground) setRefreshing(true); // 🔄 Shows the pull-to-refresh spinner briefly
+          
+          const response = await apiClient.get<Order[]>('/my-orders');
+          setMyOrders(response.data || []);
+          lastFetchTime.current = Date.now();
+      } catch (error) {
+          console.error("Fetch orders error:", error);
+      } finally {
+          setLoading(false);
+          setRefreshing(false);
+      }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      const now = Date.now();
+      
+      if (now - lastFetchTime.current > THROTTLE_MS) {
+        console.log("Tab focused: Throttled refresh triggered");
+        fetchMyOrders(false); // Pass false so we don't show a giant jumpy loader
+      } else {
+        console.log("Tab focused: Too soon to refresh, skipping...");
+      }
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -55,43 +80,48 @@ export default function MyTicketsScreen() {
   }, []);
 
   const renderOrder = ({ item }: { item: Order }) => {
-    // Safely get the event name from the first ticket in the order
-    const firstTicket = item.tickets?.[0];
-    const eventName = firstTicket?.event?.name || "Event Details TBA";
+      const firstTicket = item.tickets?.[0];
+      const eventName = firstTicket?.event?.name || "Event Details TBA";
+      const isPaid = item.status === 'paid';
 
-    return (
-      <View style={[styles.orderCard, { backgroundColor: colors.card }]}>
-        <View style={styles.orderHeader}>
-          <Text style={[styles.orderId, { color: colors.subText }]}>Order #{item.ID}</Text>
-          <Text style={[styles.orderDate, { color: colors.subText }]}>
-            {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString() : 'N/A'}
-          </Text>
-        </View>
-    
-        <View style={styles.ticketSection}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>
-              {eventName}
-            </Text>
-            <Text style={[styles.orderTotal, { color: colors.subText }]}>
-              Total Paid: RM{item.total_amount}
-            </Text>
+      return (
+        <View style={[styles.orderCard, { backgroundColor: colors.card, borderLeftWidth: 5, borderLeftColor: isPaid ? '#28a745' : '#ff9500' }]}>
+          <View style={styles.orderHeader}>
+            <Text style={[styles.orderId, { color: colors.subText }]}>Order #{item.id}</Text>
+            {/* 🏷️ Status Badge */}
+            <View style={[styles.statusBadge, { backgroundColor: isPaid ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 149, 0, 0.1)' }]}>
+              <Text style={[styles.statusText, { color: isPaid ? '#28a745' : '#ff9500' }]}>
+                {item.status.toUpperCase()}
+              </Text>
+            </View>
           </View>
-          <View style={styles.paxBadge}>
-            <Ionicons name="people" size={14} color="#007AFF" />
-            <Text style={styles.paxText}>{item.tickets?.length || 0} Pax</Text>
+      
+          <View style={styles.ticketSection}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>{eventName}</Text>
+              <Text style={[styles.orderTotal, { color: colors.subText }]}>Total: RM{item.total_amount}</Text>
+            </View>
           </View>
+      
+          {isPaid ? (
+            <TouchableOpacity 
+              style={styles.viewDetailsBtn}
+              onPress={() => navigation.navigate('OrderDetails', { order: item })}
+            >
+              <Text style={styles.viewDetailsText}>View Digital Tickets</Text>
+              <Ionicons name="qr-code-outline" size={16} color="#007AFF" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.viewDetailsBtn, styles.payNowBtn]}
+              onPress={() => item.payment_url && WebBrowser.openBrowserAsync(item.payment_url)}
+            >
+              <Text style={styles.payNowText}>Complete Payment</Text>
+              <Ionicons name="card-outline" size={16} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
-    
-        <TouchableOpacity 
-          style={styles.viewDetailsBtn}
-          onPress={() => navigation.navigate('OrderDetails', { order: item })}
-        >
-          <Text style={styles.viewDetailsText}>View Digital Tickets</Text>
-          <Ionicons name="chevron-forward" size={16} color="#007AFF" />
-        </TouchableOpacity>
-      </View>
-    );
+      );
   };
 
   if (loading && !refreshing) {
@@ -108,7 +138,7 @@ export default function MyTicketsScreen() {
   
       <FlatList
         data={myOrders}
-        keyExtractor={(item) => item.ID.toString()}
+        keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ flexGrow: 1 }}
         renderItem={renderOrder}
         refreshing={refreshing}
@@ -192,6 +222,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: -30,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  payNowBtn: {
+    backgroundColor: '#ff9500',
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 15,
+  },
+  payNowText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginRight: 8,
   },
   emptyTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15 },
   emptySub: { fontSize: 14, textAlign: 'center', marginVertical: 10, paddingHorizontal: 40 },

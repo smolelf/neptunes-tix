@@ -17,11 +17,22 @@ type Event struct {
 }
 
 type Order struct {
-	gorm.Model
-	UserID      uint     `json:"user_id"`
-	TotalAmount float64  `json:"total_amount"`
-	Status      string   `json:"status"`
-	Tickets     []Ticket `json:"tickets"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	UserID      uint      `json:"user_id"`
+	TotalAmount float64   `json:"total_amount"`
+	Status      string    `json:"status"`
+	// Rel
+	Tickets []Ticket `json:"tickets"`
+
+	// Payment Tracking
+	BillplzID  string `json:"billplz_id"`
+	PaymentURL string `json:"payment_url"`
+
+	//Points Tracking
+	PointsApplied int `json:"points_applied"` // Points SPENT to get a discount
+	PointsEarned  int `json:"points_earned"`  // Points GAINED from this purchase
 }
 
 type Ticket struct {
@@ -96,10 +107,15 @@ type TicketRepository interface {
 	GetAdminStats() (map[string]interface{}, error)
 	CreateEventStock(req CreateEventRequest) error
 
+	UpdateOrder(order *Order) error
+	GetOrderById(orderID string) (*Order, error)
+	UpdateOrderFields(id uint, fields map[string]interface{}) error
+
 	IncrementUserPoints(userID uint, amount int, reason string, orderID *uint) error
 	RecordLog(userID uint, action string, targetID string, details string)
 	ScanTicket(ticketID string) (*Ticket, error)
 
+	CleanupExpiredOrders(timeout time.Duration) (int64, error)
 	Transaction(fn func(txRepo TicketRepository) error) error
 }
 
