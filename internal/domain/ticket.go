@@ -7,34 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type Event struct {
-	gorm.Model
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Venue       string   `json:"venue"`
-	Date        string   `json:"date"`
-	Tickets     []Ticket `json:"-"`
-}
-
-type Order struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	UserID      uint      `json:"user_id"`
-	TotalAmount float64   `json:"total_amount"`
-	Status      string    `json:"status"`
-	// Rel
-	Tickets []Ticket `json:"tickets"`
-
-	// Payment Tracking
-	BillplzID  string `json:"billplz_id"`
-	PaymentURL string `json:"payment_url"`
-
-	//Points Tracking
-	PointsApplied int `json:"points_applied"` // Points SPENT to get a discount
-	PointsEarned  int `json:"points_earned"`  // Points GAINED from this purchase
-}
-
+// 1. THE TICKET DATABASE MODEL
 type Ticket struct {
 	ID        string         `gorm:"type:uuid;primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
@@ -59,71 +32,56 @@ func (t *Ticket) BeforeCreate(tx *gorm.DB) (err error) {
 	return
 }
 
-type CreateEventRequest struct {
-	EventName   string       `json:"event_name" binding:"required"`
-	Description string       `json:"description"`
-	Venue       string       `json:"venue"`
-	Date        string       `json:"date"`
-	Tiers       []TicketTier `json:"tiers" binding:"required"`
-}
-
-type TicketTier struct {
-	Category string  `json:"category"`
-	Price    float64 `json:"price"`
-	Quantity int     `json:"quantity"`
-}
-
-type EventStat struct {
-	EventID   uint    `json:"event_id"`
-	EventName string  `json:"event_name"`
-	Revenue   float64 `json:"revenue"`
-	Sold      int64   `json:"sold"`
-	Scanned   int64   `json:"scanned"`
-}
-
-type DashboardStats struct {
-	TotalRevenue float64     `json:"total_revenue"`
-	TotalSold    int64       `json:"total_sold"`
-	TotalScanned int64       `json:"total_scanned"`
-	Events       []EventStat `json:"events"`
-}
-
+// 2. THE MASTER REPOSITORY INTERFACE
 type TicketRepository interface {
-	UserRepository
+	// --- USER METHODS ---
+	CreateUser(user *User) error
+	UpdateUser(user *User) error
+	GetUserByID(id string) (*User, error)
+	GetUserByEmail(email string) (*User, error)
+	GetUserWithTickets(id string) (*User, error)
+	SearchCustomerByName(name string) ([]User, error)
 
+	// --- TICKET CORE METHODS ---
 	CreateTicket(ticket *Ticket) error
 	UpdateTicket(ticket *Ticket) error
-	GetAll(limit int, offset int, category string, available bool, search string) ([]Ticket, int64, error)
 	GetByID(id string) (*Ticket, error)
 	Delete(id string) error
-	// GetStats() (map[string]interface{}, error)
-	GetUserTickets(userID uint) ([]Ticket, error)
-	CreateOrder(order *Order) error
-	GetAvailableSequential(eventID uint, category string, limit int) ([]Ticket, error)
+	GetAll(limit int, offset int, category string, available bool, search string) ([]Ticket, int64, error)
 	UpdateTicketBatch(tickets []Ticket) error
+	GetUserTickets(userID uint) ([]Ticket, error)
+	ScanTicket(ticketID string) (*Ticket, error)
+	GetGateStats() (int64, int64, error)
+	GetUnscannedByEmail(email string) ([]Ticket, error)
+	BulkCheckIn(ticketIDs []string) error
+
+	// --- MARKETPLACE & BOOKING ---
 	GetMarketplace(search string) ([]Ticket, error)
+	GetAvailableSequential(eventID uint, category string, limit int) ([]Ticket, error)
+	CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error
+
+	// --- EVENT & GENERATION ---
+	CreateEventStock(req CreateEventRequest) error
+	GetEventByID(id uint) (*Event, error)
+	GetAllEvents() ([]Event, error)
+
+	// --- ORDER HELPERS ---
+	CreateOrder(order *Order) error
 	GetUserOrders(userID uint) ([]Order, error)
 	GetOrderWithTickets(orderID string, userID uint) (Order, error)
-	GetAdminStats() (map[string]interface{}, error)
-	CreateEventStock(req CreateEventRequest) error
-
+	GetOrderById(id string) (*Order, error)
 	UpdateOrder(order *Order) error
-	GetOrderById(orderID string) (*Order, error)
-	UpdateOrderFields(id uint, fields map[string]interface{}) error
-
-	IncrementUserPoints(userID uint, amount int, reason string, orderID *uint) error
-	RecordLog(userID uint, action string, targetID string, details string)
-	ScanTicket(ticketID string) (*Ticket, error)
-
+	UpdateOrderFields(orderID uint, fields map[string]interface{}) error
 	CleanupExpiredOrders(timeout time.Duration) (int64, error)
-	Transaction(fn func(txRepo TicketRepository) error) error
-}
 
-type AuditLog struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `json:"user_id"`   // The Admin/Agent who performed the action
-	Action    string    `json:"action"`    // e.g., "BULK_CHECKIN", "MANUAL_CHECKIN", "DELETE_TICKET"
-	TargetID  string    `json:"target_id"` // The Ticket UUID or User ID affected
-	Details   string    `json:"details"`   // Extra info: "Checked in 5 tickets for guest@email.com"
-	CreatedAt time.Time `json:"created_at"`
+	// --- ADMIN STATS ---
+	GetAdminStats() (map[string]interface{}, error)
+
+	// --- AUDIT LOGGING & POINTS ---
+	RecordLog(userID uint, action, targetID, details string)
+	GetPointHistory(userID uint) ([]PointTransaction, error)
+	IncrementUserPoints(userID uint, amount int, reason string, orderID *uint) error
+
+	// --- SYSTEM ---
+	Transaction(fn func(TicketRepository) error) error
 }

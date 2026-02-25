@@ -12,39 +12,36 @@ import (
 )
 
 type BookingService struct {
-	userRepo   domain.UserRepository
-	ticketRepo domain.TicketRepository
+	repo domain.TicketRepository // 🚀 Unified Master Interface
 }
 
-func NewBookingService(tRepo domain.TicketRepository,
-	uRepo domain.UserRepository) *BookingService {
+// 🚀 Look how clean the constructor is now!
+func NewBookingService(repo domain.TicketRepository) *BookingService {
 	return &BookingService{
-		ticketRepo: tRepo,
-		userRepo:   uRepo,
+		repo: repo,
 	}
 }
 
 func (s *BookingService) ListTickets(limit, offset int, category string, available bool, search string) ([]domain.Ticket, int64, error) {
-	return s.ticketRepo.GetAll(limit, offset, category, available, search)
+	return s.repo.GetAll(limit, offset, category, available, search)
 }
 
 func (s *BookingService) RemoveTicket(id string) error {
-	return s.ticketRepo.Delete(id)
+	return s.repo.Delete(id)
 }
 
 func (s *BookingService) MarkAsSold(id string) (*domain.Ticket, error) {
-	ticket, err := s.ticketRepo.GetByID(id)
+	ticket, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err // Ticket doesn't exist
 	}
 
-	// Business Rule: Cannot sell a ticket that is already sold
 	if ticket.IsSold {
 		return nil, fmt.Errorf("ticket with ID %s is already sold", id)
 	}
 
 	ticket.IsSold = true
-	err = s.ticketRepo.UpdateTicket(ticket)
+	err = s.repo.UpdateTicket(ticket)
 	return ticket, err
 }
 
@@ -60,14 +57,12 @@ func (s *BookingService) CreateTicket(eventID uint, category string, price float
 		IsSold:   false,
 	}
 
-	err := s.ticketRepo.CreateTicket(newTicket)
+	err := s.repo.CreateTicket(newTicket)
 	return newTicket, err
 }
 
-// Change eventName string -> eventID uint
 func (s *BookingService) BookTickets(userID uint, eventID uint, category string, quantity int) error {
-	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-		// 1. Get tickets
+	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
 		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
@@ -76,13 +71,11 @@ func (s *BookingService) BookTickets(userID uint, eventID uint, category string,
 			return errors.New("insufficient tickets available")
 		}
 
-		// 2. Calculate total price
 		var total float64
 		for _, t := range tickets {
 			total += t.Price
 		}
 
-		// 3. Create the Order
 		order := &domain.Order{
 			UserID:      userID,
 			TotalAmount: total,
@@ -92,18 +85,14 @@ func (s *BookingService) BookTickets(userID uint, eventID uint, category string,
 			return err
 		}
 
-		// 🚀 4. AWARD POINTS
 		pointsToEarn := int(total * 10)
-		// This call is what was missing!
 		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, "Ticket Purchase", &order.ID); err != nil {
 			return err
 		}
 
-		// 5. Audit Log (Optional but recommended)
 		txRepo.RecordLog(userID, "POINTS_EARNED", fmt.Sprintf("%d", order.ID),
 			fmt.Sprintf("Earned %d points", pointsToEarn))
 
-		// 6. Update Tickets
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &order.ID
@@ -114,7 +103,6 @@ func (s *BookingService) BookTickets(userID uint, eventID uint, category string,
 }
 
 func (s *BookingService) CreateUser(name, email, password, role string) (*domain.User, error) {
-	// 1. Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -124,41 +112,37 @@ func (s *BookingService) CreateUser(name, email, password, role string) (*domain
 		Name:     name,
 		Email:    email,
 		Password: string(hashedPassword),
-		Role:     role, // Customer default
+		Role:     role,
 	}
 
-	err = s.userRepo.CreateUser(newUser)
+	err = s.repo.CreateUser(newUser)
 	return newUser, err
 }
 
 func (s *BookingService) Login(email, password string) (string, error) {
-	// 1. Find user
-	user, err := s.userRepo.GetUserByEmail(email)
+	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		return "", fmt.Errorf("invalid credentials")
 	}
 
-	// 2. Compare passwords
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
 		return "", fmt.Errorf("invalid credentials")
 	}
 
-	// 3. Create JWT Token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":    user.ID,
-		"user_role":  user.Role, // Add this!
+		"user_role":  user.Role,
 		"user_name":  user.Name,
 		"user_email": user.Email,
 		"exp":        time.Now().Add(time.Hour * 72).Unix(),
 	})
 
-	// 4. Sign the token with our secret
 	return token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
 func (s *BookingService) CheckInTicket(ticketID string, expectedEventID uint) error {
-	ticket, err := s.ticketRepo.GetByID(ticketID)
+	ticket, err := s.repo.GetByID(ticketID)
 	if err != nil {
 		return fmt.Errorf("ticket not found")
 	}
@@ -176,18 +160,17 @@ func (s *BookingService) CheckInTicket(ticketID string, expectedEventID uint) er
 	}
 
 	now := time.Now()
-	ticket.CheckedInAt = &now // Assigning the address of 'now' to the pointer
+	ticket.CheckedInAt = &now
 
-	return s.ticketRepo.UpdateTicket(ticket)
+	return s.repo.UpdateTicket(ticket)
 }
 
 func (s *BookingService) AdminUpdateUser(id string, name, email, role string) error {
-	user, err := s.userRepo.GetUserByID(id)
+	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return err
 	}
 
-	// Only update if a new value is provided
 	if name != "" {
 		user.Name = name
 	}
@@ -198,17 +181,15 @@ func (s *BookingService) AdminUpdateUser(id string, name, email, role string) er
 		user.Role = role
 	}
 
-	return s.userRepo.UpdateUser(user)
+	return s.repo.UpdateUser(user)
 }
 
 func (s *BookingService) UpdateOwnProfile(userID uint, name, email string) error {
-	// 1. Fetch user by ID (using the User Interface)
-	user, err := s.userRepo.GetUserByID(fmt.Sprint(userID))
+	user, err := s.repo.GetUserByID(fmt.Sprint(userID))
 	if err != nil {
 		return err
 	}
 
-	// 2. Only update the fields provided
 	if name != "" {
 		user.Name = name
 	}
@@ -216,14 +197,11 @@ func (s *BookingService) UpdateOwnProfile(userID uint, name, email string) error
 		user.Email = email
 	}
 
-	// 3. Save back to the database
-	return s.userRepo.UpdateUser(user)
+	return s.repo.UpdateUser(user)
 }
 
 func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error {
-	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-
-		// 1. Get the Sequential Tickets
+	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
 		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
@@ -232,13 +210,11 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 			return fmt.Errorf("insufficient tickets: only %d available", len(tickets))
 		}
 
-		// 2. Calculate Total
 		total := 0.0
 		for _, t := range tickets {
 			total += t.Price
 		}
 
-		// 3. Create the Order Parent
 		newOrder := &domain.Order{
 			UserID:      userID,
 			TotalAmount: total,
@@ -248,13 +224,11 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 			return err
 		}
 
-		// 🚀 4. AWARD POINTS (THE MISSING LINK)
 		pointsToEarn := int(total * 10)
 		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, fmt.Sprintf("Bought %d tickets on %d", quantity), &newOrder.ID); err != nil {
 			return err
 		}
 
-		// 5. Update the tickets
 		for i := range tickets {
 			tickets[i].IsSold = true
 			tickets[i].OrderID = &newOrder.ID
@@ -265,18 +239,16 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 }
 
 func (s *BookingService) RedeemPoints(userID uint, pointsToSpend int) error {
-	// We pass nil for OrderID because it's a general redemption, or
-	// pass the ID of the order being discounted!
-	return s.ticketRepo.IncrementUserPoints(userID, -pointsToSpend, "Points Redemption", nil)
+	return s.repo.IncrementUserPoints(userID, -pointsToSpend, "Points Redemption", nil)
 }
 
 func (s *BookingService) InitiatePayment(userID uint, eventID uint, category string, quantity int, redeemPoints int) (string, uint, error) {
 	var mockURL string
 	var capturedID uint
 
-	err := s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-		// 1. Check if user exists and has enough points
-		user, err := s.userRepo.GetUserByID(fmt.Sprint(userID))
+	err := s.repo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 🚀 FIXED: using txRepo instead of s.userRepo!
+		user, err := txRepo.GetUserByID(fmt.Sprint(userID))
 		if err != nil {
 			return err
 		}
@@ -284,7 +256,6 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 			return fmt.Errorf("insufficient points for redemption")
 		}
 
-		// 2. Find Available Tickets
 		tickets, err := txRepo.GetAvailableSequential(eventID, category, quantity)
 		if err != nil {
 			return err
@@ -293,7 +264,6 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 			return fmt.Errorf("tickets no longer available")
 		}
 
-		// 3. Calculate Pricing
 		var subtotal float64
 		for _, t := range tickets {
 			subtotal += t.Price
@@ -304,7 +274,6 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 			finalAmount = 0
 		}
 
-		// 4. Create the PENDING Order (Initial Insert)
 		newOrder := &domain.Order{
 			UserID:        userID,
 			TotalAmount:   finalAmount,
@@ -313,13 +282,11 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 			PointsEarned:  int(finalAmount * 10),
 		}
 
-		// GORM creates the record and populates newOrder.ID here
 		if err := txRepo.CreateOrder(newOrder); err != nil {
 			return err
 		}
 		capturedID = newOrder.ID
 
-		// 5. Link Tickets to Order (Locking)
 		for i := range tickets {
 			tickets[i].OrderID = &capturedID
 		}
@@ -327,11 +294,8 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 			return err
 		}
 
-		// 6. Generate the URL using the newly minted ID
 		mockURL = fmt.Sprintf("%s/mock-billplz/%d", os.Getenv("TEMP_URL"), capturedID)
 
-		// 7. 🔥 THE FIX: Targeted update to avoid "Duplicate Key" errors.
-		// This tells GORM to only touch the payment_url field for this specific ID.
 		return txRepo.UpdateOrderFields(capturedID, map[string]interface{}{
 			"payment_url": mockURL,
 		})
@@ -341,14 +305,12 @@ func (s *BookingService) InitiatePayment(userID uint, eventID uint, category str
 }
 
 func (s *BookingService) FinalizePayment(orderID string) error {
-	return s.ticketRepo.Transaction(func(txRepo domain.TicketRepository) error {
-		// 1. Get the Order with Tickets preloaded
+	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
 		order, err := txRepo.GetOrderById(orderID)
 		if err != nil || order.Status != "pending" {
 			return errors.New("order not found or not pending")
 		}
 
-		// 2. Mark Order as PAID (Using targeted update is safer here too)
 		err = txRepo.UpdateOrderFields(order.ID, map[string]interface{}{
 			"status": "paid",
 		})
@@ -356,7 +318,6 @@ func (s *BookingService) FinalizePayment(orderID string) error {
 			return err
 		}
 
-		// 3. Mark Tickets as SOLD
 		for i := range order.Tickets {
 			order.Tickets[i].IsSold = true
 		}
@@ -364,7 +325,6 @@ func (s *BookingService) FinalizePayment(orderID string) error {
 			return err
 		}
 
-		// 4. Finalize Points
 		if order.PointsApplied > 0 {
 			txRepo.IncrementUserPoints(order.UserID, -order.PointsApplied, "Used points for discount", &order.ID)
 		}

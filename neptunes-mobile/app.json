@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NeptuneStix",
+    "name": "NeptunesTix",
     "slug": "neptunestix",
     "scheme": "neptunestix",
     "version": "1.0.0",
@@ -30,7 +30,9 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      "expo-camera"
     ]
   }
 }

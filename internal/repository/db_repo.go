@@ -11,20 +11,7 @@ import (
 )
 
 // 1. Defined internal structs for Admin Stats to ensure compilation
-type EventStat struct {
-	EventID   uint    `json:"event_id"`
-	EventName string  `json:"event_name"`
-	Revenue   float64 `json:"revenue"`
-	Sold      int64   `json:"sold"`
-	Scanned   int64   `json:"scanned"`
-}
-
-type DashboardStats struct {
-	TotalRevenue float64     `json:"total_revenue"`
-	TotalSold    int64       `json:"total_sold"`
-	TotalScanned int64       `json:"total_scanned"`
-	Events       []EventStat `json:"events"`
-}
+var _ domain.TicketRepository = (*dbRepo)(nil)
 
 type dbRepo struct {
 	db *gorm.DB
@@ -111,41 +98,6 @@ func (d *dbRepo) GetAll(limit int, offset int, category string, available bool, 
 }
 
 // --- EVENT & GENERATION ---
-
-func (d *dbRepo) CreateEventStock(req domain.CreateEventRequest) error {
-	return d.db.Transaction(func(tx *gorm.DB) error {
-		newEvent := domain.Event{
-			Name:        req.EventName,
-			Description: req.Description,
-			Venue:       req.Venue,
-			Date:        req.Date,
-		}
-		if err := tx.Create(&newEvent).Error; err != nil {
-			return err
-		}
-
-		var tickets []domain.Ticket
-		for _, tier := range req.Tiers {
-			for i := 0; i < tier.Quantity; i++ {
-				// Just add the data to the slice, don't hit the DB yet
-				tickets = append(tickets, domain.Ticket{
-					EventID:  newEvent.ID,
-					Category: tier.Category,
-					Price:    tier.Price,
-					IsSold:   false,
-				})
-			}
-		}
-
-		// Safety check: Don't try to insert if the slice is empty
-		if len(tickets) == 0 {
-			return fmt.Errorf("no tickets were generated. check tier quantities")
-		}
-
-		// ONE single database call to insert everything in the slice
-		return tx.Create(&tickets).Error
-	})
-}
 
 // --- MARKETPLACE & BOOKING ---
 
@@ -236,132 +188,9 @@ func (d *dbRepo) CreateBulkBooking(userID uint, eventID uint, category string, q
 	})
 }
 
-func (d *dbRepo) CleanupExpiredOrders(timeout time.Duration) (int64, error) {
-	// Find orders that are 'pending' and older than the timeout
-	expirationTime := time.Now().Add(-timeout)
-
-	var expiredOrders []domain.Order
-	d.db.Where("status = ? AND created_at < ?", "pending", expirationTime).Find(&expiredOrders)
-
-	if len(expiredOrders) == 0 {
-		return 0, nil
-	}
-
-	var totalReleased int64
-	for _, order := range expiredOrders {
-		// 1. Unlink tickets from this order
-		// We set order_id to NULL so they show up in Marketplace again
-		res := d.db.Model(&domain.Ticket{}).Where("order_id = ?", order.ID).Update("order_id", nil)
-		totalReleased += res.RowsAffected
-
-		// 2. Mark order as expired so it doesn't get picked up again
-		d.db.Model(&order).Update("status", "expired")
-	}
-
-	return totalReleased, nil
-}
-
 // --- ADMIN STATS ---
 
-func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
-	var totalRevenue float64
-	var totalSold, totalScanned int64
-
-	// 1. Calculate Global Stats
-	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Select("SUM(price)").Row().Scan(&totalRevenue)
-	d.db.Model(&domain.Ticket{}).Where("is_sold = ?", true).Count(&totalSold)
-	d.db.Model(&domain.Ticket{}).Where("checked_in_at IS NOT NULL").Count(&totalScanned)
-
-	// 2. Calculate Individual Event Stats
-	type EventResult struct {
-		EventID   uint    `json:"event_id"`
-		EventName string  `json:"event_name"`
-		Revenue   float64 `json:"revenue"`
-		Sold      int64   `json:"sold"`
-		Scanned   int64   `json:"scanned"`
-	}
-	var eventStats []EventResult
-
-	var recentLogs []domain.AuditLog
-	d.db.Order("created_at desc").Limit(10).Find(&recentLogs)
-	fmt.Println(recentLogs)
-
-	// Raw SQL grouping is the most efficient way to get this nested data
-	d.db.Table("tickets").
-		Select("events.id as event_id, events.name as event_name, SUM(tickets.price) as revenue, COUNT(tickets.id) as sold, COUNT(tickets.checked_in_at) as scanned").
-		Joins("join events on events.id = tickets.event_id").
-		Where("tickets.is_sold = ?", true).
-		Group("events.id, events.name").
-		Scan(&eventStats)
-
-	return map[string]interface{}{
-		"total_revenue": totalRevenue,
-		"total_sold":    totalSold,
-		"total_scanned": totalScanned,
-		"events":        eventStats,
-		"recent_logs":   recentLogs,
-	}, nil
-}
-
 // --- ORDER HELPERS ---
-
-func (d *dbRepo) CreateOrder(order *domain.Order) error {
-	return d.db.Create(order).Error
-}
-
-func (d *dbRepo) GetUserTickets(userID uint) ([]domain.Ticket, error) {
-	var tickets []domain.Ticket
-	err := d.db.Preload("Event").
-		Joins("JOIN orders ON orders.id = tickets.order_id").
-		Where("orders.user_id = ?", userID).
-		Find(&tickets).Error
-	return tickets, err
-}
-
-func (d *dbRepo) GetUserOrders(userID uint) ([]domain.Order, error) {
-	var orders []domain.Order
-	err := d.db.Preload("Tickets.Event").
-		Where("user_id = ?", userID).
-		Order("created_at desc").
-		Find(&orders).Error
-	return orders, err
-}
-
-func (d *dbRepo) GetOrderWithTickets(orderID string, userID uint) (domain.Order, error) {
-	var order domain.Order
-	err := d.db.Preload("Tickets.Event").
-		Where("id = ? AND user_id = ?", orderID, userID).
-		First(&order).Error
-	return order, err
-}
-
-func (d *dbRepo) UpdateTicketBatch(tickets []domain.Ticket) error {
-	return d.db.Save(&tickets).Error
-}
-
-func (d *dbRepo) Transaction(fn func(domain.TicketRepository) error) error {
-	return d.db.Transaction(func(tx *gorm.DB) error {
-		// Create a new instance of your repo using the transaction DB handle
-		txRepo := NewDBRepo(tx)
-		return fn(txRepo)
-	})
-}
-
-func (d *dbRepo) GetOrderById(id string) (*domain.Order, error) {
-	var order domain.Order
-	// 🚀 CRITICAL: We MUST Preload Tickets so FinalizePayment can mark them as sold
-	err := d.db.Preload("Tickets").First(&order, "id = ?", id).Error
-	return &order, err
-}
-
-func (d *dbRepo) UpdateOrder(order *domain.Order) error {
-	return d.db.Save(order).Error
-}
-
-func (d *dbRepo) UpdateOrderFields(orderID uint, fields map[string]interface{}) error {
-	// This forces a SQL UPDATE statement instead of an INSERT
-	return d.db.Model(&domain.Order{}).Where("id = ?", orderID).Updates(fields).Error
-}
 
 // --- SCANNING ---
 

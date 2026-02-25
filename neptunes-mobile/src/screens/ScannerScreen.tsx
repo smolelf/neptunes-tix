@@ -1,6 +1,6 @@
 import React, { useState, useRef, useContext, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Dimensions } from 'react-native';
-import { CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeContext } from '../context/ThemeContext';
@@ -21,6 +21,11 @@ export default function ScannerScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useContext(ThemeContext);
   const isFocused = useIsFocused();
+  
+  // 1. Hooks first
+  const [permission, requestPermission] = useCameraPermissions();
+  
+  // 2. States
   const [cameraActive, setCameraActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const scanLock = useRef(false);
@@ -50,6 +55,29 @@ export default function ScannerScreen() {
     }
   }, [isFocused]);
 
+    if (!permission) {
+    return (
+      <View style={[styles.idleState, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  // 4. Function Definitions
+  const handleStartScanning = async () => {
+    if (!permission.granted) {
+      const response = await requestPermission();
+      if (!response.granted) {
+        Alert.alert(
+          "Camera Permission Required",
+          "Please enable camera access in your settings to scan tickets."
+        );
+        return;
+      }
+    }
+    setCameraActive(true);
+  };
+  
   const handleBarCodeScanned = async ({ data, bounds }: any) => {
     if (scanLock.current || !data) return;
 
@@ -214,7 +242,7 @@ const handleBulkCheckIn = async () => {
                   </Text>
                 </View>
 
-                <TouchableOpacity style={styles.startButton} onPress={() => setCameraActive(true)}>
+                <TouchableOpacity style={styles.startButton} onPress={handleStartScanning}>
                   <Text style={styles.buttonText}>Start Scanning</Text>
                 </TouchableOpacity>
               </>
