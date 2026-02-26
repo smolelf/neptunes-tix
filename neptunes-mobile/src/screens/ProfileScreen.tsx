@@ -24,6 +24,32 @@ export default function ProfileScreen() { // Removed { navigation } from props t
   const navigation = useNavigation<any>();
   const [refreshing, setRefreshing] = useState(false);
   
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}>
+        <Ionicons name="person-circle-outline" size={100} color={colors.subText} />
+        <Text style={[styles.name, { color: colors.text, marginBottom: 10 }]}>Ready to join us?</Text>
+        <Text style={{ color: colors.subText, textAlign: 'center', marginBottom: 30 }}>
+          Sign in to track your tickets and start earning loyalty points! 🎁
+        </Text>
+        
+        <TouchableOpacity 
+          style={[styles.button, { backgroundColor: '#007AFF' }]} 
+          onPress={() => navigation.navigate('Login')}
+        >
+          <Text style={styles.buttonText}>Sign In</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.button, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#007AFF', marginTop: 15 }]} 
+          onPress={() => navigation.navigate('Signup')}
+        >
+          <Text style={[styles.buttonText, { color: '#007AFF' }]}>Create Account</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   useFocusEffect(
     useCallback(() => {
       refreshUser();
@@ -48,7 +74,7 @@ export default function ProfileScreen() { // Removed { navigation } from props t
           // Use navigation.reset to clear the history and go to Login
           navigation.reset({
             index: 0,
-            routes: [{ name: 'Login' }],
+            routes: [{ name: 'Home' }],
           });
         } 
       }
@@ -225,4 +251,21 @@ const styles = StyleSheet.create({
     },
     loyaltyLabel: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
     loyaltyValue: { fontSize: 26, fontWeight: '900' },
+    centered: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 40,
+    },
+    button: {
+      width: '100%',
+      height: 55,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    buttonText: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#fff',
+    },
 });

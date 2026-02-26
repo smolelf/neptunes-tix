@@ -42,6 +42,42 @@ export default function PointsHistoryScreen() {
 
   const renderItem = ({ item }: { item: PointTransaction }) => {
     const isPositive = item.amount > 0;
+    // Inside PointsHistoryScreen.tsx
+
+const renderItem = ({ item }: { item: PointTransaction }) => {
+  const isPositive = item.amount > 0;
+  
+  // Format the date to show Day, Month, and Year for better clarity
+  const formattedDate = new Date(item.created_at).toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    return (
+      <View style={[styles.item, { backgroundColor: colors.card }]}>
+        <View style={[styles.iconContainer, { backgroundColor: isPositive ? 'rgba(40, 167, 69, 0.1)' : 'rgba(220, 53, 69, 0.1)' }]}>
+          <Ionicons 
+            name={isPositive ? "arrow-up-circle" : "arrow-down-circle"} // 🚀 Swapped for directional icons
+            size={24} 
+            color={isPositive ? "#28a745" : "#dc3545"} 
+          />
+        </View>
+        <View style={styles.details}>
+          <Text style={[styles.reason, { color: colors.text }]}>{item.reason}</Text>
+          <Text style={styles.date}>{formattedDate}</Text>
+        </View>
+        <View style={styles.amountContainer}>
+          <Text style={[styles.amount, { color: isPositive ? "#28a745" : "#dc3545" }]}>
+            {isPositive ? '+' : ''}{item.amount}
+          </Text>
+          <Text style={{ fontSize: 10, color: colors.subText, textAlign: 'right' }}>pts</Text>
+        </View>
+      </View>
+    );
+  };
     
     return (
       <View style={[styles.item, { backgroundColor: colors.card }]}>
@@ -100,5 +136,14 @@ const styles = StyleSheet.create({
   reason: { fontWeight: 'bold', fontSize: 14 },
   date: { color: 'gray', fontSize: 11, marginTop: 2 },
   amount: { fontWeight: '900', fontSize: 16 },
-  empty: { textAlign: 'center', marginTop: 50, color: 'gray' }
+  empty: { textAlign: 'center', marginTop: 50, color: 'gray' },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 100, // Adjust based on your preference
+  },
+  amountContainer: {
+    alignItems: 'flex-end',
+  },
 });

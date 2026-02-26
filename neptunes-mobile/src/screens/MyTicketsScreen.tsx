@@ -4,6 +4,7 @@ import { View, Text, FlatList, StyleSheet,
   ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
+import { AuthContext } from '../context/AuthContext';
 import { ThemeContext } from '../context/ThemeContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
@@ -32,6 +33,7 @@ interface Order {
 
 export default function MyTicketsScreen() {
   const { colors, isDark } = useContext(ThemeContext);
+  const { user } = useContext(AuthContext);
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,11 +42,15 @@ export default function MyTicketsScreen() {
   const lastFetchTime = useRef<number>(0);
   const THROTTLE_MS = 30000; // 30 seconds
 
-  const fetchMyOrders = async (showLoading = true, isBackground = false) => {
+  const fetchMyOrders = async (showLoading = true) => {
+      // 🚀 Guard: Don't fetch if no user is logged in
+      if (!user) {
+          setLoading(false);
+          return;
+      }
+
       try {
           if (showLoading) setLoading(true);
-          if (isBackground) setRefreshing(true); // 🔄 Shows the pull-to-refresh spinner briefly
-          
           const response = await apiClient.get<Order[]>('/my-orders');
           setMyOrders(response.data || []);
           lastFetchTime.current = Date.now();
@@ -55,6 +61,24 @@ export default function MyTicketsScreen() {
           setRefreshing(false);
       }
   };
+
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.emptyContainer, { backgroundColor: colors.background }]}>
+        <Ionicons name="lock-closed-outline" size={80} color={colors.subText} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Member Feature</Text>
+        <Text style={[styles.emptySub, { color: colors.subText }]}>
+          Sign in to view your tickets and order history.
+        </Text>
+        <TouchableOpacity 
+            style={[styles.marketBtn, { backgroundColor: '#007AFF', borderColor: '#007AFF' }]}
+            onPress={() => navigation.navigate('Login')}
+        >
+            <Text style={[styles.marketBtnText, { color: '#fff' }]}>Sign In Now</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -83,7 +107,7 @@ export default function MyTicketsScreen() {
       const firstTicket = item.tickets?.[0];
       const eventName = firstTicket?.event?.name || "Event Details TBA";
       const isPaid = item.status === 'paid';
-
+    
       return (
         <View style={[styles.orderCard, { backgroundColor: colors.card, borderLeftWidth: 5, borderLeftColor: isPaid ? '#28a745' : '#ff9500' }]}>
           <View style={styles.orderHeader}>
@@ -113,11 +137,11 @@ export default function MyTicketsScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
-              style={[styles.viewDetailsBtn, styles.payNowBtn]}
-              onPress={() => item.payment_url && WebBrowser.openBrowserAsync(item.payment_url)}
+              style={styles.viewDetailsBtn}
+              onPress={() => navigation.navigate('OrderDetails', { orderId: item.id.toString() })} // 🚀 Fixed Param
             >
-              <Text style={styles.payNowText}>Complete Payment</Text>
-              <Ionicons name="card-outline" size={16} color="#fff" />
+              <Text style={styles.viewDetailsText}>View Digital Tickets</Text>
+              <Ionicons name="qr-code-outline" size={16} color="#007AFF" />
             </TouchableOpacity>
           )}
         </View>

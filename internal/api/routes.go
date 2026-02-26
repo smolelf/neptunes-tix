@@ -38,24 +38,26 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		c.JSON(200, gin.H{"token": token})
 	})
 
-	r.POST("/users", func(c *gin.Context) {
-		var input struct {
-			Name     string `json:"name" binding:"required"`
-			Email    string `json:"email" binding:"required"`
-			Password string `json:"password" binding:"required"`
-			Role     string `json:"role"`
-		}
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-		user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, input.Role)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Could not create user"})
-			return
-		}
-		c.JSON(201, user)
-	})
+	r.POST("/users", HandleUserRegistration(bookingSvc))
+
+	// r.POST("/users", func(c *gin.Context) {
+	// 	var input struct {
+	// 		Name     string `json:"name" binding:"required"`
+	// 		Email    string `json:"email" binding:"required"`
+	// 		Password string `json:"password" binding:"required"`
+	// 		Role     string `json:"role"`
+	// 	}
+	// 	if err := c.ShouldBindJSON(&input); err != nil {
+	// 		c.JSON(400, gin.H{"error": err.Error()})
+	// 		return
+	// 	}
+	// 	user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, input.Role)
+	// 	if err != nil {
+	// 		c.JSON(500, gin.H{"error": "Could not create user"})
+	// 		return
+	// 	}
+	// 	c.JSON(201, user)
+	// })
 
 	r.GET("/tickets", func(c *gin.Context) {
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))

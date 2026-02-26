@@ -1,6 +1,8 @@
 import React, { useContext } from 'react';
-import { View, Text, Platform } from 'react-native';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { View, Text, Platform
+  , TouchableOpacity } from 'react-native';
+import { NavigationContainer, DefaultTheme, DarkTheme,
+  useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,13 +23,16 @@ import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import CreateEventScreen from './src/screens/CreateEventScreen';
 import PointsHistoryScreen from './src/screens/PointsHistoryScreen';
+import SignupScreen from './src/screens/SignupScreen';
 
 export type RootStackParamList = {
   Login: undefined;
+  Signup: { targetTicket?: any };
   Home: undefined;
   OrderDetails: { orderId: string };
   AdminDashboard: undefined;
   CreateEvent: undefined;
+  PointsHistory: undefined;
 };
 
 export type MainTabParamList = {
@@ -37,27 +42,29 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);
   const { user } = useContext(AuthContext);
+  const navigation = useNavigation<any>();
 
-  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
-
+  const displayName = user?.name || user?.email?.split('@')[0] || 'Guest';
+  
   return (
     <Tab.Navigator 
       screenOptions={({ route }) => ({ 
         headerShown: true,
         tabBarStyle: { 
+          display: user ? 'flex' : 'none', 
           backgroundColor: colors.background,
           borderTopColor: isDark ? '#333' : '#eee',
         },
         headerStyle: { 
           backgroundColor: colors.background,
-          elevation: 0, // Remove shadow on Android
-          shadowOpacity: 0, // Remove shadow on iOS
+          elevation: 0,
+          shadowOpacity: 0,
         },
         headerTintColor: colors.text,
         tabBarActiveTintColor: '#007AFF',
@@ -80,35 +87,58 @@ function MainTabs() {
           headerTitle: () => (
             <View style={{ marginLeft: Platform.OS === 'ios' ? 0 : -10 }}>
               <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
-                Welcome, {displayName}! 👋
+                {user ? `Welcome, ${displayName}! 👋` : "Neptunes Tix"}
               </Text>
             </View>
+          ),
+          // 🚀 ADDED: Sign In button in header for Guests
+          headerRight: () => !user && (
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('Login')}
+              style={{
+                marginRight: 15,
+                backgroundColor: '#007AFF',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>Sign In</Text>
+            </TouchableOpacity>
           )
         }}
       />
-      <Tab.Screen name="Wallet" component={MyTicketsScreen} />
       
-      {/* Role-based conditional rendering */}
-      {(user?.role === 'agent' || user?.role === 'admin') && (
-        <Tab.Screen name="Scanner" component={ScannerScreen} />
-      )}
+      {/* 🚀 Protect other tabs: Only render if user exists */}
+      {user && (
+        <>
+          <Tab.Screen name="Wallet" component={MyTicketsScreen} />
+          
+          {(user?.role === 'agent' || user?.role === 'admin') && (
+            <Tab.Screen name="Scanner" component={ScannerScreen} />
+          )}
 
-      <Tab.Screen name="Profile" component={ProfileScreen}/>
+          <Tab.Screen name="Profile" component={ProfileScreen}/>
+        </>
+      )}
     </Tab.Navigator>
   );
 }
 
 function AppNavigator() {
   const { colors, isDark } = useContext(ThemeContext);
+  const { user, loading } = useContext(AuthContext);
 
   // Sync React Navigation's internal theme with your ThemeContext
+  if (loading) return null; 
+
   const MyTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
       ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
       primary: '#007AFF',
-      background: colors.background, // Ensure this matches exactly
-      card: colors.background,       // This is the background of the "cards" during transitions
+      background: colors.background,
+      card: colors.background,
       text: colors.text,
       border: isDark ? '#333' : '#eee',
     },
@@ -116,23 +146,33 @@ function AppNavigator() {
 
   return (
     <NavigationContainer theme={MyTheme}>
-      <Stack.Navigator initialRouteName="Login">
-        <Stack.Screen 
-          name="Login" 
-          component={LoginScreen} 
-          options={{ headerShown: false }} 
-        />
+      <Stack.Navigator initialRouteName="Home">
         <Stack.Screen 
           name="Home" 
           component={MainTabs} 
           options={{ headerShown: false }} 
         />
         <Stack.Screen 
+          name="Login" 
+          component={LoginScreen} 
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background }
+          }} 
+        />
+        <Stack.Screen 
+          name="Signup" 
+          component={SignupScreen} 
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background }
+          }} 
+        />
+        <Stack.Screen 
           name="OrderDetails" 
           component={OrderDetailsScreen} 
           options={{ 
             title: 'Your Tickets',
-            // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background } 
           }} 
         />
@@ -141,7 +181,6 @@ function AppNavigator() {
           component={AdminDashboardScreen} 
           options={{ 
             title: 'Event Analytics',
-            // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background } 
           }} 
         />
@@ -150,7 +189,6 @@ function AppNavigator() {
           component={CreateEventScreen} 
           options={{
             title: 'Launch New Event',
-            // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background }
            }} 
         />
@@ -159,7 +197,6 @@ function AppNavigator() {
           component={PointsHistoryScreen} 
           options={{ 
             title: 'Points History',
-            // This forces the 'canvas' behind the screen to match your theme
             contentStyle: { backgroundColor: colors.background }
            }} 
         />

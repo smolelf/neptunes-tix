@@ -4,7 +4,7 @@ import {
     View, Text, FlatList, StyleSheet, ActivityIndicator, 
     TouchableOpacity, Modal, Alert, TextInput, AppState, AppStateStatus 
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser'; // 🌐 In-app browser
 import LottieView from 'lottie-react-native'; // 🎉 Success animation
 import { ThemeContext } from '../context/ThemeContext';
@@ -27,11 +27,11 @@ interface Ticket {
     };
 }
 
-export default function TicketListScreen() {
-    const { colors } = useContext(ThemeContext);
-    const { user, refreshUser } = useContext(AuthContext);
-    
+export default function TicketListScreen({ route }: any) {
     // States
+    const navigation = useNavigation<any>(); // 🚀 Initialize navigation
+    const { colors } = useContext(ThemeContext);
+    const { user, token, refreshUser } = useContext(AuthContext);
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -65,16 +65,28 @@ export default function TicketListScreen() {
         }
     };
 
+    const handleBuyPress = (ticket: Ticket) => { // Changed param name for clarity
+        if (!user) {
+            // 🚀 If Guest, send them to signup and pass the ticket info
+            // Note: Ensure param name 'autoOpenTicket' matches your useEffect listener
+            navigation.navigate('Signup', { autoOpenTicket: ticket });
+        } else {
+            // 🚀 SUCCESS FIX: Instead of navigating to 'Checkout', 
+            // just set the selected ticket to open the built-in Modal!
+            setQuantity(1);
+            setSelectedTicket(ticket);
+        }
+    };
+
     useFocusEffect(
         useCallback(() => {
             const now = Date.now();
-            // Refresh if 30s passed OR if the list is empty
             if (now - lastFetchTime.current > THROTTLE_MS || tickets.length === 0) {
-                console.log("Marketplace focused: Refreshing stock...");
-                fetchTickets(searchQuery, false); // false = silent update
-                refreshUser(); // Keep points balance updated too
+                fetchTickets(searchQuery, false);
+                // 🚀 Only refresh user points if they are logged in
+                if (user) refreshUser(); 
             }
-        }, [searchQuery]) // Depend on searchQuery so we don't clear user filters
+        }, [searchQuery, user]) // Add user to dependency array
     );
 
     const debouncedSearch = useCallback(
@@ -97,6 +109,20 @@ export default function TicketListScreen() {
         });
         return () => subscription.remove();
     }, [searchQuery, refreshUser]);
+
+    useEffect(() => {
+        if (route.params?.autoOpenTicket) {
+            const ticket = route.params.autoOpenTicket;
+            console.log("Auto-opening ticket after signup:", ticket.event?.name);
+            
+            // Set the modal state
+            setQuantity(1);
+            setSelectedTicket(ticket);
+            
+            // Clear the params so it doesn't open again on next visit
+            navigation.setParams({ autoOpenTicket: undefined });
+        }
+    }, [route.params?.autoOpenTicket]);
 
     useEffect(() => { fetchTickets(); }, []);
 
@@ -203,7 +229,7 @@ export default function TicketListScreen() {
                 renderItem={({ item }) => (
                     <TouchableOpacity 
                         style={[styles.ticketContainer, { backgroundColor: colors.card }]} 
-                        onPress={() => { setQuantity(1); setSelectedTicket(item); }}
+                        onPress={() => handleBuyPress(item)} // 🚀 Now uses the guard logic!
                     >
                         <View style={styles.ticketHeader}>
                             <View style={{ flex: 1 }}>

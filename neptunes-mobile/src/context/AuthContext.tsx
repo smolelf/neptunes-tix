@@ -7,20 +7,19 @@ export const AuthContext = createContext<any>(null);
 export const AuthProvider = ({ children }: any) => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null); // Added token state
 
   useEffect(() => {
     loadStoredUser();
   }, []);
 
-  // 1. Unified Refresh Function
   const refreshUser = async () => {
+    if (!token) return;
     try {
       const response = await apiClient.get('/users/me');
-      // response.data contains the real-time Points from Go
       setUser(response.data); 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to refresh user data:", error);
-      // If the token is invalid, log them out
       if (error.response?.status === 401) logout();
     }
   };
@@ -28,27 +27,52 @@ export const AuthProvider = ({ children }: any) => {
   const loadStoredUser = async () => {
     const token = await SecureStore.getItemAsync('userToken');
     if (token) {
-      // Don't just rely on the decoded token, 
-      // use it to bootstrap the session, then fetch fresh data
-      await refreshUser(); 
+        setToken(token);
+        // 🚀 Only refresh if we actually have a token!
+        await refreshUser(); 
+    } else {
+        console.log("Guest session: Skipping user refresh.");
     }
     setLoading(false);
-  };
+};
 
-  const login = async (token: string) => {
-    await SecureStore.setItemAsync('userToken', token);
-    // 2. Instead of just decoding, fetch the fresh user immediately
-    // so the points are accurate from the very first second
+  const login = async (newToken: string) => {
+    await SecureStore.setItemAsync('userToken', newToken);
+    setToken(newToken);
     await refreshUser();
   };
 
   const logout = async () => {
     await SecureStore.deleteItemAsync('userToken');
+    setToken(null);
     setUser(null);
   };
 
+  // 🚀 Refined SignUp to match your Go Backend
+  const signUp = async (name, email, password) => {
+    try {
+      // Use apiClient instead of axios to maintain config consistency
+      const response = await apiClient.post('/users', { name, email, password });
+      
+      const { token: newToken, user: userData } = response.data;
+
+      // 1. Save securely
+      await SecureStore.setItemAsync('userToken', newToken);
+
+      // 2. Update global state immediately
+      setToken(newToken);
+      setUser(userData); // This will now show those Welcome Points!
+      
+      return { success: true };
+    } catch (e: any) {
+      // Handle "Email already exists" or validation errors from Go
+      const errorMsg = e.response?.data?.error || e.message;
+      return { success: false, error: errorMsg };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, login, logout, signUp, loading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

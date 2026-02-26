@@ -103,6 +103,7 @@ func (s *BookingService) BookTickets(userID uint, eventID uint, category string,
 }
 
 func (s *BookingService) CreateUser(name, email, password, role string) (*domain.User, error) {
+	// 1. Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -113,10 +114,20 @@ func (s *BookingService) CreateUser(name, email, password, role string) (*domain
 		Email:    email,
 		Password: string(hashedPassword),
 		Role:     role,
+		Points:   100, // 🎁 Give 100 "Welcome Points" (e.g., worth RM 1.00)
 	}
 
-	err = s.repo.CreateUser(newUser)
-	return newUser, err
+	// 2. Use a transaction to create the user and record the point log
+	err = s.repo.Transaction(func(txRepo domain.TicketRepository) error {
+		if err := txRepo.CreateUser(newUser); err != nil {
+			return err
+		}
+
+		// Record why they got these points
+		return txRepo.IncrementUserPoints(newUser.ID, 100, "Welcome Bonus!", nil)
+	})
+
+	return newUser, nil
 }
 
 func (s *BookingService) Login(email, password string) (string, error) {
@@ -225,7 +236,7 @@ func (s *BookingService) CreateBulkBooking(userID uint, eventID uint, category s
 		}
 
 		pointsToEarn := int(total * 10)
-		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, fmt.Sprintf("Bought %d tickets on %d", quantity), &newOrder.ID); err != nil {
+		if err := txRepo.IncrementUserPoints(userID, pointsToEarn, fmt.Sprintf("Bought %d tickets", quantity), &newOrder.ID); err != nil {
 			return err
 		}
 
