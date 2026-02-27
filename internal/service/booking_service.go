@@ -114,19 +114,25 @@ func (s *BookingService) CreateUser(name, email, password, role string) (*domain
 		Email:    email,
 		Password: string(hashedPassword),
 		Role:     role,
-		Points:   100, // 🎁 Give 100 "Welcome Points" (e.g., worth RM 1.00)
+		Points:   0,
 	}
 
 	// 2. Use a transaction to create the user and record the point log
 	err = s.repo.Transaction(func(txRepo domain.TicketRepository) error {
+		// Create the user record in PostgreSQL
 		if err := txRepo.CreateUser(newUser); err != nil {
 			return err
 		}
 
-		// Record why they got these points
 		return txRepo.IncrementUserPoints(newUser.ID, 100, "Welcome Bonus!", nil)
 	})
 
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the local object so the response shows 100
+	newUser.Points = 100
 	return newUser, nil
 }
 

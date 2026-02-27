@@ -113,47 +113,47 @@ func HandleDeleteTicket(bookingSvc *service.BookingService) gin.HandlerFunc {
 	}
 }
 
-func handleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var input struct {
-			Name     string `json:"name" binding:"required"`
-			Email    string `json:"email" binding:"required,email"`
-			Password string `json:"password" binding:"required,min=6"`
-		}
+// func handleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		var input struct {
+// 			Name     string `json:"name" binding:"required"`
+// 			Email    string `json:"email" binding:"required,email"`
+// 			Password string `json:"password" binding:"required,min=6"`
+// 		}
 
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid input: " + err.Error()})
-			return
-		}
+// 		if err := c.ShouldBindJSON(&input); err != nil {
+// 			c.JSON(400, gin.H{"error": "Invalid input: " + err.Error()})
+// 			return
+// 		}
 
-		// 1. Create the user (Service handles password hashing)
-		// We hardcode the role to "customer" for public signups
-		user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, "customer")
-		if err != nil {
-			c.JSON(500, gin.H{"error": "User with this email may already exist"})
-			return
-		}
+// 		// 1. Create the user (Service handles password hashing)
+// 		// We hardcode the role to "customer" for public signups
+// 		user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, "customer")
+// 		if err != nil {
+// 			c.JSON(500, gin.H{"error": "User with this email may already exist"})
+// 			return
+// 		}
 
-		// 2. 🚀 THE REFINEMENT: Generate a token immediately
-		// This allows the mobile app to save the token and continue to checkout
-		token, err := bookingSvc.Login(input.Email, input.Password)
-		if err != nil {
-			// If token generation fails, we still created the user,
-			// but they'll have to log in manually.
-			c.JSON(201, gin.H{
-				"message": "User created, please log in",
-				"user":    user,
-			})
-			return
-		}
+// 		// 2. 🚀 THE REFINEMENT: Generate a token immediately
+// 		// This allows the mobile app to save the token and continue to checkout
+// 		token, err := bookingSvc.Login(input.Email, input.Password)
+// 		if err != nil {
+// 			// If token generation fails, we still created the user,
+// 			// but they'll have to log in manually.
+// 			c.JSON(201, gin.H{
+// 				"message": "User created, please log in",
+// 				"user":    user,
+// 			})
+// 			return
+// 		}
 
-		c.JSON(201, gin.H{
-			"message": "Registration successful",
-			"token":   token,
-			"user":    user,
-		})
-	}
-}
+// 		c.JSON(201, gin.H{
+// 			"message": "Registration successful",
+// 			"token":   token,
+// 			"user":    user,
+// 		})
+// 	}
+// }
 
 func HandleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
