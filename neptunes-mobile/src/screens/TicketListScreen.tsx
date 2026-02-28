@@ -1,12 +1,11 @@
-import React, { useEffect, useState, useContext,
-    useCallback, useRef } from 'react';
+import React, { useEffect, useState, useContext, useCallback, useRef, useMemo } from 'react';
 import { 
     View, Text, FlatList, StyleSheet, ActivityIndicator, 
     TouchableOpacity, Modal, Alert, TextInput, AppState, AppStateStatus 
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import * as WebBrowser from 'expo-web-browser'; // 🌐 In-app browser
-import LottieView from 'lottie-react-native'; // 🎉 Success animation
+import * as WebBrowser from 'expo-web-browser';
+import LottieView from 'lottie-react-native';
 import { ThemeContext } from '../context/ThemeContext';
 import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
@@ -14,49 +13,47 @@ import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 
-interface Ticket {
-    ID: number; 
-    event_id: number; 
+// 🚀 New Structured Interfaces
+interface TicketTier {
     category: string;
     price: number;
     stock: number;
-    event?: {
-        name: string;
-        venue?: string;
-        date?: string;
-    };
+}
+
+interface EventGroup {
+    event_id: number;
+    name: string;
+    venue: string;
+    date: string;
+    tiers: TicketTier[];
 }
 
 export default function TicketListScreen({ route }: any) {
-    // States
-    const navigation = useNavigation<any>(); // 🚀 Initialize navigation
+    const navigation = useNavigation<any>();
     const { colors } = useContext(ThemeContext);
-    const { user, token, refreshUser } = useContext(AuthContext);
-    const [tickets, setTickets] = useState<Ticket[]>([]);
+    const { user, refreshUser } = useContext(AuthContext);
+    
+    // States
+    const [rawTickets, setRawTickets] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [quantity, setQuantity] = useState(1);
-    const [bookingLoading, setBookingLoading] = useState(false);
+    
+    // Cart States
+    const [selectedEvent, setSelectedEvent] = useState<EventGroup | null>(null);
+    const [quantities, setQuantities] = useState<Record<string, number>>({});
     const [redeemPoints, setRedeemPoints] = useState(0);
-    const [showSuccess, setShowSuccess] = useState(false); // Success Lottie Modal
-
-    // Pricing Logic
-    const subtotal = (selectedTicket?.price || 0) * quantity;
-    const discount = redeemPoints / 100;
-    const finalAmount = Math.max(0, subtotal - discount);
+    const [bookingLoading, setBookingLoading] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     const lastFetchTime = useRef<number>(0);
-    const THROTTLE_MS = 30000; // 30 seconds
+    const THROTTLE_MS = 30000;
 
     const fetchTickets = async (query: string = '', showLoading = true) => {
         try {
             if (showLoading) setLoading(true);
-            const response = await apiClient.get<{ data: Ticket[] }>(`/marketplace?q=${query}`);
-            setTickets(response.data.data || []);
-            
-            // Update timestamp
+            const response = await apiClient.get(`/marketplace?q=${query}`);
+            setRawTickets(response.data.data || []);
             lastFetchTime.current = Date.now();
         } catch (error) {
             console.error("Marketplace fetch error:", error);
@@ -65,23 +62,125 @@ export default function TicketListScreen({ route }: any) {
         }
     };
 
-    const handleBuyPress = (ticket: Ticket) => { // Changed param name for clarity
+    // 🚀 Grouping Logic: Flattens backend response into Event -> Tiers
+    const groupedEvents = useMemo(() => {
+        const groups: Record<number, EventGroup> = {};
+        rawTickets.forEach(t => {
+            if (!groups[t.event_id]) {
+                groups[t.event_id] = {
+                    event_id: t.event_id,
+                    name: t.event?.name || 'TBA',
+                    venue: t.event?.venue || 'TBA',
+                    date: t.event?.date || 'TBA',
+                    tiers: []
+                };
+            }
+            groups[t.event_id].tiers.push({
+                category: t.category,
+                price: t.price,
+                stock: t.stock
+            });
+        });
+        return Object.values(groups);
+    }, [rawTickets]);
+
+    // Dynamic Pricing Logic
+    const subtotal = useMemo(() => {
+        if (!selectedEvent) return 0;
+        return selectedEvent.tiers.reduce((acc, tier) => {
+            return acc + (tier.price * (quantities[tier.category] || 0));
+        }, 0);
+    }, [selectedEvent, quantities]);
+
+    const totalTicketsSelected = Object.values(quantities).reduce((a, b) => a + b, 0);
+    const discount = redeemPoints / 100;
+    const finalAmount = Math.max(0, subtotal - discount);
+
+    const updateQty = (category: string, delta: number, maxStock: number) => {
+        const current = quantities[category] || 0;
+        const next = Math.max(0, Math.min(maxStock, current + delta));
+        setQuantities(prev => ({ ...prev, [category]: next }));
+        // Reset points if user changes cart, so they don't overspend
+        setRedeemPoints(0); 
+    };
+
+    const handleBuyPress = (event: EventGroup) => {
         if (!user) {
-            // 🚀 If Guest, send them to signup and pass the ticket info
-            // Note: Ensure param name 'autoOpenTicket' matches your useEffect listener
-            navigation.navigate('Signup', { autoOpenTicket: ticket });
+            navigation.navigate('Signup', { targetEvent: event });
         } else {
-            // 🚀 SUCCESS FIX: Instead of navigating to 'Checkout', 
-            // just set the selected ticket to open the built-in Modal!
-            setQuantity(1);
-            setSelectedTicket(ticket);
+            setSelectedEvent(event);
+            setQuantities({});
+            setRedeemPoints(0);
+        }
+    };
+
+    const handlePointsToggle = () => {
+        if (redeemPoints > 0) {
+            setRedeemPoints(0);
+        } else {
+            const pointsNeeded = subtotal * 100;
+            const pointsToApply = Math.min(user?.points || 0, pointsNeeded);
+            setRedeemPoints(pointsToApply);
+        }
+    };
+
+    const handleCheckout = async () => {
+        if (!selectedEvent || totalTicketsSelected === 0) {
+            Alert.alert("Error", "Please select at least one ticket.");
+            return;
+        }
+        
+        // 🚀 Transform local cart state into backend-friendly array
+        const items = Object.entries(quantities)
+            .filter(([_, qty]) => qty > 0)
+            .map(([category, quantity]) => ({ category, quantity }));
+
+        try {
+            setBookingLoading(true);
+            const token = await SecureStore.getItemAsync('userToken');
+            
+            const response = await apiClient.post('/checkout', {
+                event_id: selectedEvent.event_id,
+                redeem_points: redeemPoints,
+                items: items // Sending the array!
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            const paymentUrl = response.data.payment_url;
+            if (paymentUrl) {
+                setBookingLoading(false);
+                const result = await WebBrowser.openBrowserAsync(paymentUrl, { showInRecents: true });
+                setSelectedEvent(null);
+                
+                if (result.type === 'cancel' || result.type === 'dismiss') {
+                    verifyPaymentStatus(response.data.order_id); 
+                }
+            }
+        } catch (error: any) {
+            setBookingLoading(false);
+            Alert.alert("Error", error.response?.data?.error || "Checkout failed");
+        }
+    };
+
+    const verifyPaymentStatus = async (orderId: number) => {
+        try {
+            const response = await apiClient.get(`/orders/${orderId}/status`);
+            if (response.data.status === 'paid') {
+                setShowSuccess(true);
+                refreshUser();
+                fetchTickets(searchQuery);
+                setTimeout(() => setShowSuccess(false), 3000);
+            }
+        } catch (e) {
+            console.error("Status check failed", e);
         }
     };
 
     useFocusEffect(
         useCallback(() => {
             const now = Date.now();
-            if (now - lastFetchTime.current > THROTTLE_MS || tickets.length === 0) {
+            if (now - lastFetchTime.current > THROTTLE_MS || rawTickets.length === 0) {
                 fetchTickets(searchQuery, false);
                 // 🚀 Only refresh user points if they are logged in
                 if (user) refreshUser(); 
@@ -112,92 +211,30 @@ export default function TicketListScreen({ route }: any) {
 
     useEffect(() => {
         if (route.params?.autoOpenTicket) {
-            const ticket = route.params.autoOpenTicket;
-            console.log("Auto-opening ticket after signup:", ticket.event?.name);
+            const targetTicket = route.params.autoOpenTicket;
+            console.log("Auto-opening event for:", targetTicket.event?.name);
             
-            // Set the modal state
-            setQuantity(1);
-            setSelectedTicket(ticket);
+            // 1. Find the event group that contains this ticket
+            // We search through the already calculated 'groupedEvents'
+            const targetEvent = groupedEvents.find(e => e.event_id === targetTicket.event_id);
+
+            if (targetEvent) {
+                // 2. Open the modal for this Event
+                setSelectedEvent(targetEvent);
+
+                // 3. Pre-select 1 qty for the specific category
+                setQuantities({ [targetTicket.category]: 1 });
+            }
             
             // Clear the params so it doesn't open again on next visit
             navigation.setParams({ autoOpenTicket: undefined });
         }
-    }, [route.params?.autoOpenTicket]);
+    }, [route.params?.autoOpenTicket, groupedEvents]);
 
     useEffect(() => { fetchTickets(); }, []);
 
-    const handleCheckout = async () => {
-        if (!selectedTicket) return;
-        
-        try {
-            setBookingLoading(true);
-            const token = await SecureStore.getItemAsync('userToken');
-            
-            const response = await apiClient.post('/checkout', {
-                event_id: selectedTicket.event_id,
-                category: selectedTicket.category,
-                quantity: quantity,
-                redeem_points: redeemPoints,
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            
-            console.log("Checkout Response Data:", response.data);
+    
 
-            const orderId = response.data.order_id || response.data.id || response.data.ID;
-            
-            const paymentUrl = response.data.payment_url;
-
-            if (paymentUrl) {
-                // Keep the modal open but stop loading
-                setBookingLoading(false);
-
-                // Open browser directly
-                const result = await WebBrowser.openBrowserAsync(paymentUrl, {
-                    showInRecents: true,
-                });
-
-                // NOW close the ticket selection modal
-                setSelectedTicket(null);
-                setRedeemPoints(0);
-
-                // Check if the user returned
-                if (result.type === 'cancel' || result.type === 'dismiss') {
-                    // IMPORTANT: We should verify with the backend if the order is PAID
-                    // before showing the success animation
-                    verifyPaymentStatus(orderId); 
-                }
-            }
-        } catch (error: any) {
-            setBookingLoading(false);
-            console.error("Checkout Error:", error);
-            Alert.alert("Error", error.response?.data?.error || "Checkout failed");
-        }
-    };
-
-    // Add this helper to verify if they ACTUALLY paid
-    const verifyPaymentStatus = async (orderId: number) => {
-    try {
-        const response = await apiClient.get(`/orders/${orderId}/status`);
-        
-        if (response.data.status === 'paid') {
-            setShowSuccess(true);
-            refreshUser();
-            fetchTickets(searchQuery);
-            setTimeout(() => setShowSuccess(false), 3000);
-        } else {
-            // Instead of a loud Alert, maybe just a console log or a smaller toast
-            console.log("Payment not completed yet.");
-        }
-    } catch (e: any) {
-        // Handle the 404 or network error silently
-        if (e.response?.status === 404) {
-            console.warn("Status endpoint missing on backend!");
-        } else {
-            console.error("Status check failed", e);
-        }
-    }
-};
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -208,122 +245,112 @@ export default function TicketListScreen({ route }: any) {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <Text style={[styles.header, { color: colors.text }]}>Tickets Available</Text>
+            <Text style={[styles.header, { color: colors.text }]}>Events</Text>
             
-            {/* Search (Existing) */}
-            <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Ionicons name="search" size={20} color={colors.subText} style={{ marginRight: 10 }} />
-                <TextInput
-                    style={[styles.searchInput, { color: colors.text }]}
-                    placeholder="Search events..."
-                    placeholderTextColor={colors.subText}
-                    value={searchQuery}
-                    onChangeText={handleSearchChange}
-                />
-            </View>
-            
-            {/* Ticket List (Existing) */}
             <FlatList
-                data={tickets}
-                keyExtractor={(item) => `${item.event_id}-${item.category}`}
+                data={groupedEvents}
+                keyExtractor={(item) => item.event_id.toString()}
                 renderItem={({ item }) => (
                     <TouchableOpacity 
                         style={[styles.ticketContainer, { backgroundColor: colors.card }]} 
-                        onPress={() => handleBuyPress(item)} // 🚀 Now uses the guard logic!
+                        onPress={() => handleBuyPress(item)}
                     >
                         <View style={styles.ticketHeader}>
                             <View style={{ flex: 1 }}>
-                                <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>{item.event?.name}</Text>
+                                <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
                                 <View style={styles.infoRow}>
                                     <Ionicons name="location-outline" size={14} color={colors.subText} />
-                                    <Text style={[styles.infoText, { color: colors.subText }]}>{item.event?.venue || 'Venue TBA'}</Text>
+                                    <Text style={[styles.infoText, { color: colors.subText }]}>{item.venue}</Text>
                                 </View>
                             </View>
                             <View style={styles.priceTag}>
-                                <Text style={styles.priceText}>RM{item.price}</Text>
+                                <Text style={styles.priceText}>From RM{Math.min(...item.tiers.map(t => t.price))}</Text>
                             </View>
                         </View>
                         <View style={styles.divider} />
                         <View style={styles.ticketFooter}>
-                            <Text style={[styles.footerText, { color: colors.text }]}>{item.stock} available</Text>
-                            <View style={styles.categoryBadge}>
-                                <Text style={styles.categoryText}>{item.category.toUpperCase()}</Text>
-                            </View>
+                            <Text style={[styles.footerText, { color: colors.text }]}>
+                                {item.tiers.reduce((sum, t) => sum + t.stock, 0)} total tickets left
+                            </Text>
                         </View>
                     </TouchableOpacity>
                 )}
-                refreshing={refreshing}
-                onRefresh={onRefresh}
             />
 
-            {/* --- CHECKOUT MODAL --- */}
-            <Modal visible={!!selectedTicket} transparent={true} animationType="slide">
+            {/* --- CHECKOUT MODAL WITH MULTI-TIER SUPPORT --- */}
+            <Modal visible={!!selectedEvent} transparent={true} animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedTicket?.event?.name}</Text>
-                        
-                        {/* Stepper */}
-                        <View style={styles.stepper}>
-                            <TouchableOpacity onPress={() => setQuantity(Math.max(1, quantity - 1))} style={styles.stepperBtn}>
-                                <Ionicons name="remove" size={24} color={colors.text} />
-                            </TouchableOpacity>
-                            <Text style={[styles.quantityText, { color: colors.text }]}>{quantity}</Text>
-                            <TouchableOpacity 
-                                onPress={() => quantity < (selectedTicket?.stock || 0) && setQuantity(quantity + 1)} 
-                                style={styles.stepperBtn}
-                            >
-                                <Ionicons name="add" size={24} color={colors.text} />
-                            </TouchableOpacity>
-                        </View>
+                        <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 20 }]}>
+                            {selectedEvent?.name}
+                        </Text>
 
-                        {/* 🪙 Points Section */}
-                        {user?.points > 0 && (
-                            <View style={styles.pointsSection}>
-                                <Text style={[styles.pointsLabel, { color: colors.subText }]}>Balance: {user.points} pts</Text>
-                                <TouchableOpacity 
-                                    style={[styles.pointsToggle, redeemPoints > 0 && styles.pointsToggleActive]}
-                                    onPress={() => setRedeemPoints(redeemPoints > 0 ? 0 : Math.min(user.points, subtotal * 100))}
-                                >
-                                    <Text style={[styles.pointsToggleText, { color: redeemPoints > 0 ? '#fff' : '#007AFF' }]}>
-                                        {redeemPoints > 0 ? `Saved RM${discount.toFixed(2)}` : `Save RM${(user.points/100).toFixed(2)} with pts`}
+                        {/* 🚀 Dynamic Tier Rows */}
+                        {selectedEvent?.tiers.map((tier) => (
+                            <View key={tier.category} style={styles.tierRow}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: colors.text }}>
+                                        {tier.category.toUpperCase()}
                                     </Text>
-                                </TouchableOpacity>
+                                    <Text style={{ color: colors.subText }}>RM{tier.price} • {tier.stock} left</Text>
+                                </View>
+                                
+                                <View style={styles.smallStepper}>
+                                    <TouchableOpacity 
+                                        onPress={() => updateQty(tier.category, -1, tier.stock)} 
+                                        style={styles.stepperBtnSmall}
+                                    >
+                                        <Ionicons name="remove" size={20} color={colors.text} />
+                                    </TouchableOpacity>
+                                    <Text style={[styles.quantityText, { color: colors.text, minWidth: 25 }]}>
+                                        {quantities[tier.category] || 0}
+                                    </Text>
+                                    <TouchableOpacity 
+                                        onPress={() => updateQty(tier.category, 1, tier.stock)} 
+                                        style={styles.stepperBtnSmall}
+                                    >
+                                        <Ionicons name="add" size={20} color={colors.text} />
+                                    </TouchableOpacity>
+                                </View>
                             </View>
+                        ))}
+
+                        <View style={[styles.divider, { width: '100%', marginVertical: 15 }]} />
+
+                        {/* Points Section */}
+                        {user?.points > 0 && subtotal > 0 && (
+                            <TouchableOpacity 
+                                style={[styles.pointsToggle, redeemPoints > 0 && styles.pointsToggleActive]}
+                                onPress={handlePointsToggle}
+                            >
+                                <Text style={[styles.pointsToggleText, { color: redeemPoints > 0 ? '#fff' : '#007AFF' }]}>
+                                    {redeemPoints > 0 
+                                        ? `Applied -RM${(redeemPoints / 100).toFixed(2)}` 
+                                        : `Use Points (Save up to RM${Math.min((user?.points || 0) / 100, subtotal).toFixed(2)})`}
+                                </Text>
+                            </TouchableOpacity>
                         )}
 
                         {/* Price Summary */}
                         <View style={styles.summaryBox}>
-                            <View style={styles.summaryRow}><Text style={{ color: colors.subText }}>Subtotal</Text><Text style={{ color: colors.text }}>RM{subtotal.toFixed(2)}</Text></View>
-                            {redeemPoints > 0 && <View style={styles.summaryRow}><Text style={{ color: '#ff3b30' }}>Discount</Text><Text style={{ color: '#ff3b30' }}>-RM{discount.toFixed(2)}</Text></View>}
-                            <View style={[styles.divider, { marginVertical: 10 }]} />
-                            <View style={styles.summaryRow}><Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text><Text style={styles.totalPriceText}>RM{finalAmount.toFixed(2)}</Text></View>
+                            <View style={styles.summaryRow}>
+                                <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
+                                <Text style={styles.totalPriceText}>RM{finalAmount.toFixed(2)}</Text>
+                            </View>
                         </View>
 
-                        <TouchableOpacity style={[styles.confirmBtn, bookingLoading && { backgroundColor: '#ccc' }]} onPress={handleCheckout} disabled={bookingLoading}>
+                        <TouchableOpacity 
+                            style={[styles.confirmBtn, (bookingLoading || totalTicketsSelected === 0) && { backgroundColor: '#ccc' }]} 
+                            onPress={handleCheckout} 
+                            disabled={bookingLoading || totalTicketsSelected === 0}
+                        >
                             {bookingLoading ? <ActivityIndicator color="white" /> : <Text style={styles.confirmText}>Proceed to Payment</Text>}
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.cancelButton} onPress={() => { setSelectedTicket(null); setRedeemPoints(0); }}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedEvent(null)}>
                             <Text style={styles.cancelButtonText}>Cancel</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
-            </Modal>
-
-            {/* --- 🎉 SUCCESS LOTTIE MODAL --- */}
-            <Modal visible={showSuccess} transparent={true} animationType="fade">
-                <View style={styles.successOverlay}>
-                    {/* Wrap in a View that prevents touch propagation to background */}
-                    <TouchableOpacity activeOpacity={1} style={styles.successCard}>
-                        <LottieView 
-                            source={require('../../assets/success-check.json')} 
-                            autoPlay 
-                            loop={false} 
-                            style={{ width: 180, height: 180 }} 
-                        />
-                        <Text style={[styles.successTitle, {color: '#000'}]}>Payment Received!</Text>
-                        <Text style={styles.successSub}>Your tickets are now available.</Text>
-                    </TouchableOpacity>
                 </View>
             </Modal>
         </View>
@@ -331,8 +358,6 @@ export default function TicketListScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-    // ... Copy your existing styles here ...
-    // ADD THESE NEW STYLES:
     successOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.8)',
@@ -383,4 +408,7 @@ const styles = StyleSheet.create({
     confirmText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
     cancelButton: { padding: 12, width: '100%', alignItems: 'center' },
     cancelButtonText: { color: '#8e8e93', fontSize: 15, fontWeight: '600' },
+    tierRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 15 },
+    smallStepper: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+    stepperBtnSmall: { width: 35, height: 35, borderRadius: 17.5, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 });

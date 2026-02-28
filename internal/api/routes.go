@@ -143,37 +143,26 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 
 		userAuth.PUT("/my-profile", func(c *gin.Context) {
 			userID := c.MustGet("userID").(uint)
+
 			var input struct {
-				Name  string `json:"name"`
-				Email string `json:"email" binding:"omitempty,email"`
+				Name     string `json:"name"`
+				Email    string `json:"email" binding:"omitempty,email"`
+				Password string `json:"password"` // 🚀 New
+				Avatar   string `json:"avatar"`   // 🚀 New (Base64)
 			}
+
 			if err := c.ShouldBindJSON(&input); err != nil {
 				c.JSON(400, gin.H{"error": err.Error()})
 				return
 			}
-			if err := bookingSvc.UpdateOwnProfile(userID, input.Name, input.Email); err != nil {
+
+			// Pass all fields to the service
+			if err := bookingSvc.UpdateOwnProfile(userID, input.Name, input.Email, input.Password, input.Avatar); err != nil {
 				c.JSON(500, gin.H{"error": "Update failed"})
 				return
 			}
-			c.JSON(200, gin.H{"message": "Profile updated successfully!"})
-		})
 
-		userAuth.POST("/bookings/bulk", func(c *gin.Context) {
-			var req struct {
-				EventID  uint   `json:"event_id" binding:"required"`
-				Category string `json:"category" binding:"required"`
-				Quantity int    `json:"quantity" binding:"required,gt=0"`
-			}
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(400, gin.H{"error": "Invalid input"})
-				return
-			}
-			userID := c.MustGet("userID").(uint)
-			if err := bookingSvc.CreateBulkBooking(userID, req.EventID, req.Category, req.Quantity); err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(200, gin.H{"message": "Successfully booked tickets!"})
+			c.JSON(200, gin.H{"message": "Profile updated successfully!"})
 		})
 
 		userAuth.GET("/users/me", func(c *gin.Context) {
@@ -196,23 +185,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 			c.JSON(200, history)
 		})
 
-		userAuth.POST("/checkout", func(c *gin.Context) {
-			var req struct {
-				EventID      uint   `json:"event_id"`
-				Category     string `json:"category"`
-				Quantity     int    `json:"quantity"`
-				RedeemPoints int    `json:"redeem_points"`
-			}
-			c.ShouldBindJSON(&req)
-			userID := c.MustGet("userID").(uint)
-
-			paymentURL, orderID, err := bookingSvc.InitiatePayment(userID, req.EventID, req.Category, req.Quantity, req.RedeemPoints)
-			if err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(200, gin.H{"payment_url": paymentURL, "order_id": orderID})
-		})
+		// 🚀 THE MAGIC: Routing to the newly created, multi-item handler
+		userAuth.POST("/checkout", HandleCheckout(bookingSvc))
 
 		userAuth.GET("/orders/:id/status", func(c *gin.Context) {
 			id := c.Param("id")
@@ -237,7 +211,7 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 	{
 		// 🚀 This is the magic! Look how clean this is compared to the old version.
 		adminAuth.GET("/admin/stats", middleware.RolesRequired("agent", "admin"), HandleAdminStats(adminRepo))
-		adminAuth.PATCH("/tickets/:id/checkin", middleware.RolesRequired("agent", "admin"), HandleTicketCheckin(adminRepo))
+		adminAuth.PATCH("/tickets/:id/checkin", middleware.RolesRequired("agent", "admin"), HandleTicketCheckin(bookingSvc))
 		adminAuth.GET("/agent/search-customer", middleware.RolesRequired("agent", "admin"), HandleSearchCustomer(adminRepo))
 		adminAuth.GET("/admin/tickets/lookup", middleware.RolesRequired("agent", "admin"), HandleTicketLookup(adminRepo))
 		adminAuth.POST("/admin/tickets/bulk-checkin", middleware.RolesRequired("agent", "admin"), HandleBulkCheckin(adminRepo))

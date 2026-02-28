@@ -1,6 +1,6 @@
 import React, { useContext, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert,
-  Switch, ScrollView, RefreshControl } from 'react-native'; // Changed Switch source
+  Switch, ScrollView, RefreshControl, Image } from 'react-native'; // Changed Switch source
 import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
@@ -23,6 +23,8 @@ export default function ProfileScreen() { // Removed { navigation } from props t
   const { colors, isDark, toggleTheme } = useContext(ThemeContext);
   const navigation = useNavigation<any>();
   const [refreshing, setRefreshing] = useState(false);
+  const [avatar] = useState(user?.avatar_url || null);
+  
   
   if (!user) {
     return (
@@ -94,10 +96,17 @@ export default function ProfileScreen() { // Removed { navigation } from props t
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
       <View style={styles.header}>
-        <Ionicons name="person-circle" size={100} color="#007AFF" />
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : (
+          <Ionicons name="person-circle" size={100} color="#007AFF" />
+        )}
         <Text style={[styles.name, { color: colors.text }]}>
           {user?.user_name || user?.name || 'Neptunes User'}
         </Text>
+        <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+          <Text style={{ color: '#007AFF', fontWeight: '600', marginTop: 5 }}>Edit Profile</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Points Section */}
@@ -268,4 +277,6 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
       color: '#fff',
     },
+    avatar: { width: 100, height: 100, borderRadius: 60 },
+
 });

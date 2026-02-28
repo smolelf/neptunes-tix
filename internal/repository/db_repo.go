@@ -97,8 +97,6 @@ func (d *dbRepo) GetAll(limit int, offset int, category string, available bool, 
 	return tickets, total, err
 }
 
-// --- EVENT & GENERATION ---
-
 // --- MARKETPLACE & BOOKING ---
 
 func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
@@ -188,9 +186,30 @@ func (d *dbRepo) CreateBulkBooking(userID uint, eventID uint, category string, q
 	})
 }
 
-// --- ADMIN STATS ---
+// 1. Fetch a specific tier to check stock and price
+func (d *dbRepo) GetTicketTier(eventID uint, category string) (struct {
+	Price float64
+	Stock int
+}, error) {
+	var result struct {
+		Price float64
+		Stock int
+	}
+	err := d.db.Table("tickets").
+		Select("price, COUNT(*) as stock").
+		Where("event_id = ? AND category = ? AND is_sold = ? AND order_id IS NULL", eventID, category, false).
+		Group("price").Scan(&result).Error
+	return result, err
+}
 
-// --- ORDER HELPERS ---
+// 2. Link specific tickets to the Order
+func (d *dbRepo) CreateOrderItem(orderID uint, category string, quantity int) error {
+	// This finds the first X available tickets and links them to the order
+	return d.db.Model(&domain.Ticket{}).
+		Where("event_id = (SELECT event_id FROM orders WHERE id = ?) AND category = ? AND order_id IS NULL", orderID, category).
+		Limit(quantity).
+		Update("order_id", orderID).Error
+}
 
 // --- SCANNING ---
 

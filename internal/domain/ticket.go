@@ -59,6 +59,11 @@ type TicketRepository interface {
 	GetMarketplace(search string) ([]Ticket, error)
 	GetAvailableSequential(eventID uint, category string, limit int) ([]Ticket, error)
 	CreateBulkBooking(userID uint, eventID uint, category string, quantity int) error
+	GetTicketTier(eventID uint, category string) (struct {
+		Price float64
+		Stock int
+	}, error)
+	CreateOrderItem(orderID uint, category string, quantity int) error
 
 	// --- EVENT & GENERATION ---
 	CreateEventStock(req CreateEventRequest) error

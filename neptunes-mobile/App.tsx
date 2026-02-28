@@ -24,15 +24,18 @@ import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import CreateEventScreen from './src/screens/CreateEventScreen';
 import PointsHistoryScreen from './src/screens/PointsHistoryScreen';
 import SignupScreen from './src/screens/SignupScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 
 export type RootStackParamList = {
   Login: undefined;
   Signup: { targetTicket?: any };
+  Marketplace: undefined;
   Home: undefined;
   OrderDetails: { orderId: string };
   AdminDashboard: undefined;
   CreateEvent: undefined;
   PointsHistory: undefined;
+  EditProfile: undefined;
 };
 
 export type MainTabParamList = {
@@ -200,6 +203,14 @@ function AppNavigator() {
             contentStyle: { backgroundColor: colors.background }
            }} 
         />
+        <Stack.Screen
+          name="EditProfile"
+          component={EditProfileScreen}
+          options={{
+            title: 'Edit Profile',
+            contentStyle: { backgroundColor: colors.background }
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -207,7 +218,8 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView>
+       {/* style={{ flex: 1 }}> */}
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>

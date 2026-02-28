@@ -11,7 +11,7 @@ import (
 // This interface ensures this file only demands the exact methods it needs
 type AdminRepo interface {
 	GetAdminStats() (map[string]interface{}, error)
-	ScanTicket(ticketID string) (*domain.Ticket, error)
+	// ScanTicket(ticketID string) (*domain.Ticket, error)
 	SearchCustomerByName(name string) ([]domain.User, error)
 	GetUnscannedByEmail(email string) ([]domain.Ticket, error)
 	BulkCheckIn(ticketIDs []string) error
@@ -30,15 +30,36 @@ func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
 	}
 }
 
-func HandleTicketCheckin(repo AdminRepo) gin.HandlerFunc {
+func HandleTicketCheckin(bookingSvc *service.BookingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ticketID := c.Param("id")
-		ticket, err := repo.ScanTicket(ticketID)
-		if err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
+
+		// 🚀 CRITICAL: We enforce Event ID validation here
+		eventIDStr := c.Query("event_id")
+		if eventIDStr == "" {
+			c.JSON(400, gin.H{"error": "Event ID is required for scanning"})
 			return
 		}
-		c.JSON(200, gin.H{"message": "Check-in successful!", "data": ticket})
+
+		// Convert string to uint safely
+		var eventID uint
+		if _, err := fmt.Sscanf(eventIDStr, "%d", &eventID); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid Event ID format"})
+			return
+		}
+
+		// Call the service with the Event ID restriction
+		ticket, err := bookingSvc.CheckInTicket(ticketID, eventID)
+		if err != nil {
+			// Return 409 Conflict for business rule violations (Wrong Event / Already Used)
+			c.JSON(409, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message": "Check-in successful!",
+			"data":    ticket,
+		})
 	}
 }
 
@@ -110,6 +131,55 @@ func HandleDeleteTicket(bookingSvc *service.BookingService) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"message": "Ticket deleted"})
+	}
+}
+
+type CheckoutInput struct {
+	EventID      uint                   `json:"event_id" binding:"required"`
+	RedeemPoints int                    `json:"redeem_points"`
+	Items        []service.CheckoutItem `json:"items" binding:"required,gt=0"`
+}
+
+func HandleCheckout(bookingSvc *service.BookingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input CheckoutInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get User ID from JWT context safely
+		userIDVal, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var userID uint
+		switch v := userIDVal.(type) {
+		case float64:
+			userID = uint(v)
+		case uint:
+			userID = v
+		case int:
+			userID = uint(v)
+		default:
+			c.JSON(400, gin.H{"error": "Invalid user ID format in token"})
+			return
+		}
+
+		// 🚀 The service now handles multiple items in a single transaction
+		order, err := bookingSvc.CreateMultiItemOrder(userID, input.EventID, input.Items, input.RedeemPoints)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Checkout failed: " + err.Error()})
+			return
+		}
+
+		c.JSON(201, gin.H{
+			"order_id":    order.ID,
+			"payment_url": order.PaymentURL,
+			"total":       order.TotalAmount,
+		})
 	}
 }
 
