@@ -12,7 +12,7 @@ export default function CreateEventScreen({ navigation }: any) {
   const [eventName, setEventName] = useState('');
   const [description, setDescription] = useState('');
   const [venue, setVenue] = useState('');
-  const [venueMapUrl, setVenueMapUrl] = useState(''); // 📍 New field
+  const [venueMapUrl, setVenueMapUrl] = useState('');
 
   // Date & Time States
   const [date, setDate] = useState(new Date());
@@ -21,10 +21,10 @@ export default function CreateEventScreen({ navigation }: any) {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Ticket Tiers
-  const [tiers, setTiers] = useState([{ category: 'General', price: '', quantity: '' }]);
+  const [tiers, setTiers] = useState([{ category: '', price: '', quantity: '' }]);
 
   const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios'); // Keep open on iOS, close on Android
+    setShowDatePicker(Platform.OS === 'ios'); 
     if (selectedDate) setDate(selectedDate);
   };
 
@@ -41,25 +41,39 @@ export default function CreateEventScreen({ navigation }: any) {
     setTiers(newTiers);
   };
 
+  // 🚀 NEW: Ability to remove a tier before launching
+  const removeTier = (index: number) => {
+    setTiers(tiers.filter((_, i) => i !== index));
+  };
+
   const handleCreate = async () => {
     if (!eventName || !venue) {
       Alert.alert("Error", "Please fill in all event details");
       return;
     }
 
-    // Combine date and time for backend or send separately
+    // 🚀 NEW: Safety filter to prevent sending empty tiers to the backend
+    const formattedTiers = tiers
+      .filter(t => t.category && t.price && t.quantity)
+      .map(tier => ({
+        category: tier.category,
+        price: parseFloat(tier.price) || 0,
+        quantity: parseInt(tier.quantity) || 0
+      }));
+
+    if (formattedTiers.length === 0) {
+        Alert.alert("Error", "Please complete at least one ticket tier.");
+        return;
+    }
+
     const payload = {
       event_name: eventName,
       description: description,
       venue: venue,
-      location_url: venueMapUrl, // 📍 Sending the Map Link
-      date: date.toISOString().split('T')[0], // YYYY-MM-DD
+      location_url: venueMapUrl,
+      date: date.toISOString().split('T')[0], 
       doors_open: doorTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      tiers: tiers.map(tier => ({
-        category: tier.category,
-        price: parseFloat(tier.price) || 0,
-        quantity: parseInt(tier.quantity) || 0
-      }))
+      tiers: formattedTiers
     };
 
     try {
@@ -78,7 +92,7 @@ export default function CreateEventScreen({ navigation }: any) {
       <TextInput 
         style={[styles.input, { backgroundColor: colors.card, color: colors.text }]} 
         placeholder="Event Name" 
-        placeholderTextColor="gray" 
+        placeholderTextColor={colors.subText} 
         onChangeText={setEventName} 
       />
       
@@ -86,11 +100,10 @@ export default function CreateEventScreen({ navigation }: any) {
         style={[styles.input, { backgroundColor: colors.card, color: colors.text, height: 80 }]} 
         placeholder="Description" 
         multiline 
-        placeholderTextColor="gray" 
+        placeholderTextColor={colors.subText} 
         onChangeText={setDescription} 
       />
 
-      {/* 📅 Date & Time Row */}
       <View style={styles.row}>
         {/* Date Button */}
         <TouchableOpacity 
@@ -121,52 +134,37 @@ export default function CreateEventScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* 🛠️ Picker Rendering (iOS Inline / Android Modal) */}
+      {/* Date/Time Pickers */}
       {(showDatePicker || showTimePicker) && Platform.OS === 'ios' && (
         <View style={[styles.iosPickerContainer, { backgroundColor: colors.card }]}>
           {showDatePicker && (
-            <DateTimePicker 
-              value={date} 
-              mode="date" 
-              display="inline" 
-              onChange={onDateChange} 
-            />
+            <DateTimePicker value={date} mode="date" display="inline" onChange={onDateChange} />
           )}
           {showTimePicker && (
-            <DateTimePicker 
-              value={doorTime} 
-              mode="time" 
-              display="spinner" 
-              onChange={onTimeChange} 
-            />
+            <DateTimePicker value={doorTime} mode="time" display="spinner" onChange={onTimeChange} />
           )}
-          <TouchableOpacity 
-            style={styles.doneBtn} 
-            onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }}
-          >
+          <TouchableOpacity style={styles.doneBtn} onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }}>
             <Text style={styles.doneBtnText}>Done</Text>
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Android Modal (Only shows when triggered) */}
       {Platform.OS === 'android' && showDatePicker && (
         <DateTimePicker value={date} mode="date" display="default" onChange={onDateChange} />
       )}
       {Platform.OS === 'android' && showTimePicker && (
         <DateTimePicker value={doorTime} mode="time" display="default" onChange={onTimeChange} />
       )}
-      {/* 📍 Venue & Map Link */}
+
       <TextInput 
         style={[styles.input, { backgroundColor: colors.card, color: colors.text }]} 
         placeholder="Venue Name (e.g. Zepp KL)" 
-        placeholderTextColor="gray" 
+        placeholderTextColor={colors.subText} 
         onChangeText={setVenue} 
       />
       <TextInput 
         style={[styles.input, { backgroundColor: colors.card, color: colors.text }]} 
         placeholder="Google Maps / Waze URL" 
-        placeholderTextColor="gray" 
+        placeholderTextColor={colors.subText} 
         onChangeText={setVenueMapUrl} 
       />
 
@@ -177,11 +175,44 @@ export default function CreateEventScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* 🚀 NEW: The Boxed Layout for Tiers */}
       {tiers.map((tier, index) => (
-        <View key={index} style={[styles.tierRow, { backgroundColor: colors.card }]}>
-          <TextInput style={[styles.tierInput, { color: colors.text }]} placeholder="Cat" placeholderTextColor="gray" value={tier.category} onChangeText={(v) => updateTier(index, 'category', v)} />
-          <TextInput style={[styles.tierInput, { color: colors.text }]} placeholder="Price" keyboardType="numeric" placeholderTextColor="gray" value={tier.price} onChangeText={(v) => updateTier(index, 'price', v)} />
-          <TextInput style={[styles.tierInput, { color: colors.text }]} placeholder="Qty" keyboardType="numeric" placeholderTextColor="gray" value={tier.quantity} onChangeText={(v) => updateTier(index, 'quantity', v)} />
+        <View key={index} style={[styles.newTierBox, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={styles.newTierHeader}>
+            <Text style={{ color: colors.text, fontWeight: 'bold' }}>Tier #{index + 1}</Text>
+            {tiers.length > 1 && (
+              <TouchableOpacity onPress={() => removeTier(index)}>
+                <Ionicons name="close-circle" size={24} color="#FF3B30" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TextInput 
+            style={[styles.inputBoxed, { color: colors.text, borderColor: colors.border }]} 
+            placeholder="Category Name (e.g. VIP)" 
+            placeholderTextColor={colors.subText} 
+            value={tier.category} 
+            onChangeText={(v) => updateTier(index, 'category', v)} 
+          />
+          
+          <View style={styles.row}>
+            <TextInput 
+              style={[styles.inputBoxed, styles.halfInput, { color: colors.text, borderColor: colors.border }]} 
+              placeholder="Price (RM)" 
+              keyboardType="numeric" 
+              placeholderTextColor={colors.subText} 
+              value={tier.price} 
+              onChangeText={(v) => updateTier(index, 'price', v)} 
+            />
+            <TextInput 
+              style={[styles.inputBoxed, styles.halfInput, { color: colors.text, borderColor: colors.border }]} 
+              placeholder="Quantity" 
+              keyboardType="numeric" 
+              placeholderTextColor={colors.subText} 
+              value={tier.quantity} 
+              onChangeText={(v) => updateTier(index, 'quantity', v)} 
+            />
+          </View>
         </View>
       ))}
 
@@ -195,18 +226,20 @@ export default function CreateEventScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { padding: 20 },
   label: { fontSize: 18, fontWeight: 'bold', marginVertical: 10 },
-  input: { padding: 15, borderRadius: 10, marginBottom: 10 },
-  pickerBtn: { padding: 15, borderRadius: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
-  tierHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
-  tierRow: { flexDirection: 'row', padding: 10, borderRadius: 10, marginBottom: 10, justifyContent: 'space-between' },
-  tierInput: { width: '30%', paddingVertical: 10, borderBottomWidth: 0.2, borderBottomColor: '#ddd' },
-  btn: { backgroundColor: '#007AFF', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 20, marginBottom: 50 },
+  input: { padding: 15, borderRadius: 10, marginBottom: 12 },
+  pickerBtn: { padding: 15, borderRadius: 10, marginBottom: 12, flexDirection: 'row', alignItems: 'center' },
+  tierHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 15 },
+  btn: { backgroundColor: '#007AFF', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 50 },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  row: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginBottom: 10 
-  },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  
+  // New Styles imported from EditEventScreen
+  newTierBox: { padding: 15, borderWidth: 1, borderRadius: 12, marginBottom: 15 },
+  newTierHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  inputBoxed: { borderWidth: 1, borderRadius: 10, padding: 14, fontSize: 15, marginBottom: 12 },
+  halfInput: { width: '48%', marginBottom: 0 },
+  
+  // iOS Picker constraints
   iosPickerContainer: {
     borderRadius: 15,
     padding: 10,
@@ -217,13 +250,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  doneBtn: {
-    alignSelf: 'flex-end',
-    padding: 10,
-  },
-  doneBtnText: {
-    color: '#007AFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  doneBtn: { alignSelf: 'flex-end', padding: 10 },
+  doneBtnText: { color: '#007AFF', fontWeight: 'bold', fontSize: 16 },
 });

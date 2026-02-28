@@ -222,6 +222,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		{
 			adminOnly.POST("/admin/events/create", HandleCreateEvent(adminRepo))
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
+			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
+			adminOnly.PUT("/admin/events/:id", HandleUpdateEvent(bookingSvc))
 		}
 	}
 }

@@ -12,7 +12,6 @@ import { ScrollView } from 'react-native-gesture-handler';
 
 const { width } = Dimensions.get('window');
 
-// 🚀 NEW: Updated Interface to include the events array from your backend
 interface EventStat {
   event_id: number;
   event_name: string;
@@ -34,19 +33,16 @@ export default function ScannerScreen() {
   
   const [permission, requestPermission] = useCameraPermissions();
   
-  // States
   const [cameraActive, setCameraActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const scanLock = useRef(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
-  const [manualId, setManualId] = useState('');
-  const [stats, setStats] = useState<TicketStats>({ total_sold: 0, total_scanned: 0, events: [] });
+  const [emailSearch, setEmailSearch] = useState('');
   
-  // 🚀 NEW: State to track which event the agent is scanning for
+  const [stats, setStats] = useState<TicketStats>({ total_sold: 0, total_scanned: 0, events: [] });
   const [selectedEvent, setSelectedEvent] = useState<EventStat | null>(null);
 
-  const [emailSearch, setEmailSearch] = useState('');
   const [foundTickets, setFoundTickets] = useState<any[]>([]);
   const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -56,7 +52,6 @@ export default function ScannerScreen() {
         const response = await apiClient.get<TicketStats>('/admin/stats');
         setStats(response.data);
         
-        // 🚀 NEW: If an event is already selected, update its specific stats live
         if (selectedEvent) {
             const updatedEvent = response.data.events.find(e => e.event_id === selectedEvent.event_id);
             if (updatedEvent) setSelectedEvent(updatedEvent);
@@ -82,31 +77,49 @@ export default function ScannerScreen() {
     );
   }
 
-  // --- 🚀 NEW: EVENT SELECTOR UI ---
-  // If the agent hasn't picked an event yet, force them to pick one
+  // --- 🚀 POLISHED EVENT SELECTOR UI ---
   if (!selectedEvent) {
       return (
-          <View style={[styles.container, { backgroundColor: colors.background, padding: 20, paddingTop: insets.top + 20 }]}>
-              <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 5 }]}>Select Event</Text>
-              <Text style={{ color: colors.subText, marginBottom: 20 }}>Choose an active event to start scanning.</Text>
+          <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+              {/* Beautiful Left-Aligned Header */}
+              <View style={styles.headerContainer}>
+                  <Text style={[styles.mainHeader, { color: colors.text }]}>Scanner</Text>
+                  <Text style={[styles.subHeader, { color: colors.subText }]}>Select an event to start checking in guests.</Text>
+              </View>
               
               <FlatList
                   data={stats.events}
                   keyExtractor={(item) => item.event_id.toString()}
+                  contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
                   renderItem={({ item }) => (
                       <TouchableOpacity 
-                          style={[styles.ticketSelectItem, { backgroundColor: colors.card, marginBottom: 15, padding: 20 }]}
+                          style={[styles.eventCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                           onPress={() => setSelectedEvent(item)}
                       >
-                          <View>
-                              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 18, marginBottom: 5 }}>{item.event_name}</Text>
-                              <Text style={{ color: colors.subText }}>{item.scanned} / {item.sold} Checked In</Text>
+                          <View style={{ flex: 1 }}>
+                              <Text style={[styles.eventCardTitle, { color: colors.text }]}>{item.event_name}</Text>
+                              <Text style={[styles.eventCardSub, { color: colors.subText }]}>
+                                  {item.scanned} / {item.sold} Checked In
+                              </Text>
+                              {/* 🚀 Sleek Mini Progress Bar on the list view! */}
+                              <View style={styles.miniProgressBar}>
+                                  <View style={[styles.miniProgressFill, { 
+                                      width: `${item.sold > 0 ? (item.scanned / item.sold) * 100 : 0}%`,
+                                      backgroundColor: item.scanned >= item.sold && item.sold > 0 ? '#28a745' : '#007AFF'
+                                  }]} />
+                              </View>
                           </View>
-                          <Ionicons name="chevron-forward" size={24} color={colors.subText} />
+                          
+                          <View style={styles.chevronCircle}>
+                              <Ionicons name="chevron-forward" size={20} color="#007AFF" />
+                          </View>
                       </TouchableOpacity>
                   )}
                   ListEmptyComponent={
-                      <Text style={{ color: colors.subText, textAlign: 'center', marginTop: 40 }}>No active events found today.</Text>
+                      <View style={styles.emptyContainer}>
+                          <Ionicons name="calendar-outline" size={60} color={colors.border} style={{ marginBottom: 15 }} />
+                          <Text style={{ color: colors.subText, textAlign: 'center', fontSize: 16 }}>No active events found.</Text>
+                      </View>
                   }
               />
           </View>
@@ -141,7 +154,6 @@ export default function ScannerScreen() {
     setLoading(true);
 
     try {
-      // 🚀 NEW: We append the selectedEvent.event_id to the URL
       const response = await apiClient.patch<{ data: any }>(
           `/tickets/${data}/checkin?event_id=${selectedEvent.event_id}`
       );
@@ -157,11 +169,7 @@ export default function ScannerScreen() {
 
     } catch (error: any) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        
-        // This will now show your specific backend errors like:
-        // "WRONG EVENT: This ticket is for 'Yoga Class'"
         const msg = error.response?.data?.error || "Invalid QR Code";
-        
         Alert.alert("❌ Access Denied", msg, [
             { text: "Try Again", onPress: () => resetScanner() }
         ]);
@@ -179,8 +187,6 @@ export default function ScannerScreen() {
       setIsSearching(true);
       try {
         const response = await apiClient.get(`/admin/tickets/lookup?email=${emailSearch.toLowerCase().trim()}`);
-        
-        // 🚀 NEW: Filter the tickets so the agent only sees unscanned tickets for THIS specific event
         const filteredForThisEvent = response.data.filter((t: any) => t.event_id === selectedEvent.event_id);
         
         setFoundTickets(filteredForThisEvent);
@@ -257,8 +263,7 @@ export default function ScannerScreen() {
           </View>
         ) : (
           <View style={styles.idleState}>
-            {/* 🚀 NEW: Back button to change events */}
-            <TouchableOpacity style={styles.backToEventsBtn} onPress={() => setSelectedEvent(null)}>
+            <TouchableOpacity style={[styles.backToEventsBtn, { top: insets.top + 10 }]} onPress={() => setSelectedEvent(null)}>
                 <Ionicons name="chevron-back" size={20} color="#007AFF" />
                 <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>Change Event</Text>
             </TouchableOpacity>
@@ -274,7 +279,6 @@ export default function ScannerScreen() {
                   <Ionicons name="scan" size={50} color="#007AFF" />
                 </View>
 
-                {/* 🚀 NEW: Gate Capacity is now strictly tied to the selectedEvent */}
                 <View style={[styles.statCard, { backgroundColor: colors.card }]}>
                   <Text style={[styles.statLabel, { color: colors.subText, fontSize: 14, marginBottom: 5 }]}>{selectedEvent.event_name.toUpperCase()}</Text>
                   <Text style={[styles.statLabel, { color: colors.subText }]}>GATE CAPACITY</Text>
@@ -301,6 +305,7 @@ export default function ScannerScreen() {
           </View>
         )}
 
+        {/* Manual Modal */}
         <Modal visible={manualModalVisible} animationType="fade" transparent={true} onRequestClose={() => setManualModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: colors.card, height: '70%' }]}>
@@ -365,6 +370,20 @@ export default function ScannerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  
+  // 🚀 New Styles for the Beautiful Event Selection Menu
+  headerContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  mainHeader: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5, marginBottom: 5 },
+  subHeader: { fontSize: 15 },
+  eventCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 16, marginBottom: 14, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
+  eventCardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
+  eventCardSub: { fontSize: 13, marginBottom: 12 },
+  chevronCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
+  miniProgressBar: { height: 6, backgroundColor: '#e0e0e0', borderRadius: 3, width: '85%', overflow: 'hidden' },
+  miniProgressFill: { height: '100%' },
+  emptyContainer: { alignItems: 'center', marginTop: 80 },
+
+  // Existing Scanner Styles
   topUi: { flex: 1, alignItems: 'center' },
   targetSquare: { width: 250, height: 250, position: 'relative' },
   corner: { position: 'absolute', width: 45, height: 45, borderColor: '#007AFF', borderWidth: 5 },
@@ -401,5 +420,5 @@ const styles = StyleSheet.create({
   searchContainer: { flexDirection: 'row', width: '100%', gap: 10, alignItems: 'center' },
   searchIconBtn: { padding: 10, borderRadius: 10, backgroundColor: 'rgba(0,122,255,0.1)' },
   ticketSelectItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  backToEventsBtn: { position: 'absolute', top: 50, left: 20, flexDirection: 'row', alignItems: 'center' },
+  backToEventsBtn: { position: 'absolute', left: 20, flexDirection: 'row', alignItems: 'center', zIndex: 10 },
 });

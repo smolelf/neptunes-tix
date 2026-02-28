@@ -1,8 +1,6 @@
 import React, { useContext } from 'react';
-import { View, Text, Platform
-  , TouchableOpacity } from 'react-native';
-import { NavigationContainer, DefaultTheme, DarkTheme,
-  useNavigation } from '@react-navigation/native';
+import { View, Text, Platform, TouchableOpacity } from 'react-native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +23,7 @@ import CreateEventScreen from './src/screens/CreateEventScreen';
 import PointsHistoryScreen from './src/screens/PointsHistoryScreen';
 import SignupScreen from './src/screens/SignupScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
+import EditEventScreen from './src/screens/EditEventScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -36,6 +35,7 @@ export type RootStackParamList = {
   CreateEvent: undefined;
   PointsHistory: undefined;
   EditProfile: undefined;
+  EditEvent: { event: any };
 };
 
 export type MainTabParamList = {
@@ -94,7 +94,6 @@ function MainTabs() {
               </Text>
             </View>
           ),
-          // 🚀 ADDED: Sign In button in header for Guests
           headerRight: () => !user && (
             <TouchableOpacity 
               onPress={() => navigation.navigate('Login')}
@@ -112,16 +111,13 @@ function MainTabs() {
         }}
       />
       
-      {/* 🚀 Protect other tabs: Only render if user exists */}
       {user && (
         <>
-          <Tab.Screen name="Wallet" component={MyTicketsScreen} />
-          
+          <Tab.Screen name="Wallet" component={MyTicketsScreen} options={{}}/>
           {(user?.role === 'agent' || user?.role === 'admin') && (
-            <Tab.Screen name="Scanner" component={ScannerScreen} />
+            <Tab.Screen name="Scanner" component={ScannerScreen} options={{ headerShown: false }}/>
           )}
-
-          <Tab.Screen name="Profile" component={ProfileScreen}/>
+          <Tab.Screen name="Profile" component={ProfileScreen} options={{}}/>
         </>
       )}
     </Tab.Navigator>
@@ -132,7 +128,6 @@ function AppNavigator() {
   const { colors, isDark } = useContext(ThemeContext);
   const { user, loading } = useContext(AuthContext);
 
-  // Sync React Navigation's internal theme with your ThemeContext
   if (loading) return null; 
 
   const MyTheme = {
@@ -149,7 +144,15 @@ function AppNavigator() {
 
   return (
     <NavigationContainer theme={MyTheme}>
-      <Stack.Navigator initialRouteName="Home">
+      <Stack.Navigator 
+        initialRouteName="Home"
+        // 🚀 THE FIX IS HERE: Global options applied to ALL stack screens
+        screenOptions={{
+          headerBackTitleVisible: false, // Hides "Home" text (just shows arrow on iOS)
+          headerTintColor: '#007AFF',    // Ensures the arrow is clearly visible and clickable
+          headerTitleStyle: { color: colors.text }, // Adjusts text for dark mode
+        }}
+      >
         <Stack.Screen 
           name="Home" 
           component={MainTabs} 
@@ -158,56 +161,48 @@ function AppNavigator() {
         <Stack.Screen 
           name="Login" 
           component={LoginScreen} 
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background }
-          }} 
+          options={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen 
           name="Signup" 
           component={SignupScreen} 
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background }
-          }} 
+          options={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen 
           name="OrderDetails" 
           component={OrderDetailsScreen} 
-          options={{ 
-            title: 'Your Tickets',
-            contentStyle: { backgroundColor: colors.background } 
-          }} 
+          options={{ title: 'Your Tickets', contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboardScreen} 
-          options={{ 
-            title: 'Event Analytics',
-            contentStyle: { backgroundColor: colors.background } 
-          }} 
+          options={{ title: 'Event Analytics', contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen 
           name="CreateEvent" 
           component={CreateEventScreen} 
-          options={{
-            title: 'Launch New Event',
-            contentStyle: { backgroundColor: colors.background }
-           }} 
+          options={{ title: 'Launch New Event', contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen 
           name="PointsHistory" 
           component={PointsHistoryScreen} 
-          options={{ 
-            title: 'Points History',
-            contentStyle: { backgroundColor: colors.background }
-           }} 
+          options={{ title: 'Points History', contentStyle: { backgroundColor: colors.background } }} 
         />
         <Stack.Screen
           name="EditProfile"
           component={EditProfileScreen}
           options={{
             title: 'Edit Profile',
+            presentation: 'modal',
+            contentStyle: { backgroundColor: colors.background }
+          }}
+        />
+        <Stack.Screen 
+          name="EditEvent" 
+          component={EditEventScreen} 
+          options={{
+            title: 'Edit Event',
+            presentation: 'modal',
             contentStyle: { backgroundColor: colors.background }
           }}
         />
@@ -218,8 +213,7 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView>
-       {/* style={{ flex: 1 }}> */}
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>

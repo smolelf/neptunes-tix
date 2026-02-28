@@ -54,6 +54,10 @@ type TicketRepository interface {
 	GetGateStats() (int64, int64, error)
 	GetUnscannedByEmail(email string) ([]Ticket, error)
 	BulkCheckIn(ticketIDs []string) error
+	CountSoldTickets(eventID uint, category string) (int64, error)
+	DeleteTicketsByCategory(eventID uint, category string) error
+	CreateTicketBatch(tickets []Ticket) error
+	UpdateEvent(event *Event) error
 
 	// --- MARKETPLACE & BOOKING ---
 	GetMarketplace(search string) ([]Ticket, error)

@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
-import LottieView from 'lottie-react-native';
 import { ThemeContext } from '../context/ThemeContext';
 import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/client';
@@ -13,7 +12,6 @@ import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 
-// 🚀 New Structured Interfaces
 interface TicketTier {
     category: string;
     price: number;
@@ -62,7 +60,6 @@ export default function TicketListScreen({ route }: any) {
         }
     };
 
-    // 🚀 Grouping Logic: Flattens backend response into Event -> Tiers
     const groupedEvents = useMemo(() => {
         const groups: Record<number, EventGroup> = {};
         rawTickets.forEach(t => {
@@ -84,7 +81,6 @@ export default function TicketListScreen({ route }: any) {
         return Object.values(groups);
     }, [rawTickets]);
 
-    // Dynamic Pricing Logic
     const subtotal = useMemo(() => {
         if (!selectedEvent) return 0;
         return selectedEvent.tiers.reduce((acc, tier) => {
@@ -100,7 +96,6 @@ export default function TicketListScreen({ route }: any) {
         const current = quantities[category] || 0;
         const next = Math.max(0, Math.min(maxStock, current + delta));
         setQuantities(prev => ({ ...prev, [category]: next }));
-        // Reset points if user changes cart, so they don't overspend
         setRedeemPoints(0); 
     };
 
@@ -130,7 +125,6 @@ export default function TicketListScreen({ route }: any) {
             return;
         }
         
-        // 🚀 Transform local cart state into backend-friendly array
         const items = Object.entries(quantities)
             .filter(([_, qty]) => qty > 0)
             .map(([category, quantity]) => ({ category, quantity }));
@@ -142,7 +136,7 @@ export default function TicketListScreen({ route }: any) {
             const response = await apiClient.post('/checkout', {
                 event_id: selectedEvent.event_id,
                 redeem_points: redeemPoints,
-                items: items // Sending the array!
+                items: items 
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -168,7 +162,7 @@ export default function TicketListScreen({ route }: any) {
             const response = await apiClient.get(`/orders/${orderId}/status`);
             if (response.data.status === 'paid') {
                 setShowSuccess(true);
-                refreshUser();
+                if (user) refreshUser();
                 fetchTickets(searchQuery);
                 setTimeout(() => setShowSuccess(false), 3000);
             }
@@ -182,10 +176,9 @@ export default function TicketListScreen({ route }: any) {
             const now = Date.now();
             if (now - lastFetchTime.current > THROTTLE_MS || rawTickets.length === 0) {
                 fetchTickets(searchQuery, false);
-                // 🚀 Only refresh user points if they are logged in
                 if (user) refreshUser(); 
             }
-        }, [searchQuery, user]) // Add user to dependency array
+        }, [searchQuery, user]) 
     );
 
     const debouncedSearch = useCallback(
@@ -198,48 +191,36 @@ export default function TicketListScreen({ route }: any) {
         debouncedSearch(text);
     };
 
-    // AppState Listener to refresh data when returning from In-App Browser
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
             if (nextAppState === 'active') {
                 fetchTickets(searchQuery);
-                refreshUser(); 
+                if (user) refreshUser(); 
             }
         });
         return () => subscription.remove();
-    }, [searchQuery, refreshUser]);
+    }, [searchQuery, user]); // Added user to dependency
 
     useEffect(() => {
         if (route.params?.autoOpenTicket) {
             const targetTicket = route.params.autoOpenTicket;
-            console.log("Auto-opening event for:", targetTicket.event?.name);
-            
-            // 1. Find the event group that contains this ticket
-            // We search through the already calculated 'groupedEvents'
             const targetEvent = groupedEvents.find(e => e.event_id === targetTicket.event_id);
 
             if (targetEvent) {
-                // 2. Open the modal for this Event
                 setSelectedEvent(targetEvent);
-
-                // 3. Pre-select 1 qty for the specific category
                 setQuantities({ [targetTicket.category]: 1 });
             }
-            
-            // Clear the params so it doesn't open again on next visit
             navigation.setParams({ autoOpenTicket: undefined });
         }
     }, [route.params?.autoOpenTicket, groupedEvents]);
 
     useEffect(() => { fetchTickets(); }, []);
 
-    
-
-
+    // 🚀 Refresh Handler
     const onRefresh = async () => {
         setRefreshing(true);
         await fetchTickets(searchQuery, false);
-        await refreshUser();
+        if (user) await refreshUser();
         setRefreshing(false);
     };
 
@@ -247,9 +228,29 @@ export default function TicketListScreen({ route }: any) {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <Text style={[styles.header, { color: colors.text }]}>Events</Text>
             
+            {/* 🚀 Restored Search Bar */}
+            <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Ionicons name="search" size={20} color={colors.subText} />
+                <TextInput
+                    style={[styles.searchInput, { color: colors.text }]}
+                    placeholder="Search events, venues..."
+                    placeholderTextColor={colors.subText}
+                    value={searchQuery}
+                    onChangeText={handleSearchChange}
+                />
+                {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => handleSearchChange('')}>
+                        <Ionicons name="close-circle" size={18} color={colors.subText} />
+                    </TouchableOpacity>
+                )}
+            </View>
+
             <FlatList
                 data={groupedEvents}
                 keyExtractor={(item) => item.event_id.toString()}
+                // 🚀 Restored Pull to Refresh
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 renderItem={({ item }) => (
                     <TouchableOpacity 
                         style={[styles.ticketContainer, { backgroundColor: colors.card }]} 
@@ -264,7 +265,11 @@ export default function TicketListScreen({ route }: any) {
                                 </View>
                             </View>
                             <View style={styles.priceTag}>
-                                <Text style={styles.priceText}>From RM{Math.min(...item.tiers.map(t => t.price))}</Text>
+                                <Text style={styles.priceText}>
+                                    {item.tiers.length > 0 
+                                      ? `From RM${Math.min(...item.tiers.map(t => t.price))}` 
+                                      : 'Sold Out'}
+                                </Text>
                             </View>
                         </View>
                         <View style={styles.divider} />
@@ -275,9 +280,14 @@ export default function TicketListScreen({ route }: any) {
                         </View>
                     </TouchableOpacity>
                 )}
+                ListEmptyComponent={
+                    <View style={{ alignItems: 'center', marginTop: 50 }}>
+                        <Text style={{ color: colors.subText }}>No events found.</Text>
+                    </View>
+                }
             />
 
-            {/* --- CHECKOUT MODAL WITH MULTI-TIER SUPPORT --- */}
+            {/* --- CHECKOUT MODAL --- */}
             <Modal visible={!!selectedEvent} transparent={true} animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -285,7 +295,6 @@ export default function TicketListScreen({ route }: any) {
                             {selectedEvent?.name}
                         </Text>
 
-                        {/* 🚀 Dynamic Tier Rows */}
                         {selectedEvent?.tiers.map((tier) => (
                             <View key={tier.category} style={styles.tierRow}>
                                 <View style={{ flex: 1 }}>
@@ -317,7 +326,6 @@ export default function TicketListScreen({ route }: any) {
 
                         <View style={[styles.divider, { width: '100%', marginVertical: 15 }]} />
 
-                        {/* Points Section */}
                         {user?.points > 0 && subtotal > 0 && (
                             <TouchableOpacity 
                                 style={[styles.pointsToggle, redeemPoints > 0 && styles.pointsToggleActive]}
@@ -331,7 +339,6 @@ export default function TicketListScreen({ route }: any) {
                             </TouchableOpacity>
                         )}
 
-                        {/* Price Summary */}
                         <View style={styles.summaryBox}>
                             <View style={styles.summaryRow}>
                                 <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
@@ -358,34 +365,16 @@ export default function TicketListScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-    successOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.8)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    successCard: {
-        backgroundColor: 'white',
-        borderRadius: 30,
-        padding: 30,
-        alignItems: 'center',
-        width: '80%',
-    },
-    successTitle: { fontSize: 22, fontWeight: 'bold', marginTop: 10 },
-    successSub: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 8 },
-    pointsSection: { width: '100%', padding: 15, backgroundColor: 'rgba(0,122,255,0.05)', borderRadius: 12, marginBottom: 20, alignItems: 'center' },
-    pointsLabel: { fontSize: 13, marginBottom: 8 },
-    pointsToggle: { paddingVertical: 8, paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#007AFF' },
-    pointsToggleActive: { backgroundColor: '#007AFF' },
-    pointsToggleText: { fontWeight: 'bold' },
-    summaryBox: { width: '100%', marginBottom: 20 },
-    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-    totalLabel: { fontSize: 18, fontWeight: 'bold' },
-    totalPriceText: { fontSize: 22, fontWeight: 'bold', color: '#28a745' },
     container: { flex: 1, paddingHorizontal: 16 },
     header: { fontSize: 28, fontWeight: '800', marginBottom: 20, marginTop: 40, letterSpacing: -0.5 },
-    searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 50, borderRadius: 15, borderWidth: 1, marginBottom: 20 },
+    // 🚀 Restored Search Styles
+    searchContainer: { 
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 50, 
+        borderRadius: 15, borderWidth: 1, marginBottom: 20 
+    },
     searchInput: { flex: 1, fontSize: 16, marginLeft: 8 },
+    
+    // Ticket Card Styles
     ticketContainer: { borderRadius: 20, padding: 18, marginBottom: 16, borderLeftWidth: 6, borderLeftColor: '#007AFF' },
     ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
     eventTitle: { fontSize: 19, fontWeight: 'bold', marginBottom: 6 },
@@ -396,19 +385,24 @@ const styles = StyleSheet.create({
     divider: { height: 1, backgroundColor: 'rgba(128,128,128,0.15)', marginVertical: 15 },
     ticketFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     footerText: { fontSize: 13, fontWeight: '600' },
-    categoryBadge: { backgroundColor: 'rgba(0,122,255,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-    categoryText: { color: '#007AFF', fontSize: 11, fontWeight: '900' },
+    
+    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { width: '88%', borderRadius: 25, padding: 24, alignItems: 'center' },
     modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
-    stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 25, gap: 35 },
-    stepperBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+    tierRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 15 },
+    smallStepper: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+    stepperBtnSmall: { width: 35, height: 35, borderRadius: 17.5, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center' },
     quantityText: { fontSize: 26, fontWeight: 'bold', minWidth: 40, textAlign: 'center' },
+    pointsToggle: { paddingVertical: 8, paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#007AFF' },
+    pointsToggleActive: { backgroundColor: '#007AFF' },
+    pointsToggleText: { fontWeight: 'bold' },
+    summaryBox: { width: '100%', marginBottom: 20 },
+    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+    totalLabel: { fontSize: 18, fontWeight: 'bold' },
+    totalPriceText: { fontSize: 22, fontWeight: 'bold', color: '#28a745' },
     confirmBtn: { backgroundColor: '#007AFF', padding: 16, borderRadius: 15, width: '100%', alignItems: 'center', marginBottom: 10 },
     confirmText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
     cancelButton: { padding: 12, width: '100%', alignItems: 'center' },
     cancelButtonText: { color: '#8e8e93', fontSize: 15, fontWeight: '600' },
-    tierRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 15 },
-    smallStepper: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-    stepperBtnSmall: { width: 35, height: 35, borderRadius: 17.5, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 });

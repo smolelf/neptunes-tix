@@ -137,6 +137,88 @@ func (s *BookingService) AdminUpdateUser(id string, name, email, role string) er
 	return s.repo.UpdateUser(user)
 }
 
+func (s *BookingService) UpdateEvent(eventID uint, req domain.UpdateEventRequest) error {
+	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 1. Update Basic Event Details
+		// We fetch the event first to ensure it exists
+		event, err := txRepo.GetEventByID(eventID)
+		if err != nil {
+			return fmt.Errorf("event not found")
+		}
+
+		if req.Name != "" {
+			event.Name = req.Name
+		}
+		if req.Venue != "" {
+			event.Venue = req.Venue
+		}
+		if req.Date != "" {
+			event.Date = req.Date
+		}
+		if req.Description != "" {
+			event.Description = req.Description
+		}
+		if req.LocationURL != "" {
+			event.LocationURL = req.LocationURL
+		}
+
+		if err := txRepo.UpdateEvent(event); err != nil {
+			return err
+		}
+
+		// 2. Remove Categories (Safety Check First!)
+		for _, category := range req.RemoveTiers {
+			// Check if any tickets are sold for this category
+			soldCount, err := txRepo.CountSoldTickets(eventID, category)
+			if err != nil {
+				return err
+			}
+			if soldCount > 0 {
+				return fmt.Errorf("cannot remove category '%s': %d tickets already sold", category, soldCount)
+			}
+
+			// Safe to delete all tickets for this category
+			if err := txRepo.DeleteTicketsByCategory(eventID, category); err != nil {
+				return err
+			}
+		}
+
+		// 3. Add New Categories
+		if len(req.AddTiers) > 0 {
+			if err := s.generateTickets(txRepo, eventID, req.AddTiers); err != nil {
+				return err
+			}
+		}
+
+		// 4. Add Stock to Existing Categories
+		if len(req.AddStock) > 0 {
+			if err := s.generateTickets(txRepo, eventID, req.AddStock); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func (s *BookingService) generateTickets(repo domain.TicketRepository, eventID uint, tiers []domain.TicketTier) error {
+	var tickets []domain.Ticket
+	for _, tier := range tiers {
+		for i := 0; i < tier.Quantity; i++ {
+			tickets = append(tickets, domain.Ticket{
+				EventID:  eventID,
+				Category: tier.Category,
+				Price:    tier.Price,
+				IsSold:   false,
+			})
+		}
+	}
+	if len(tickets) > 0 {
+		return repo.CreateTicketBatch(tickets)
+	}
+	return nil
+}
+
 // --- NEW MULTI-TIER CHECKOUT LOGIC ---
 
 func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items []CheckoutItem, points int) (*domain.Order, error) {

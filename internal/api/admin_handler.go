@@ -17,6 +17,7 @@ type AdminRepo interface {
 	BulkCheckIn(ticketIDs []string) error
 	RecordLog(userID uint, action, targetID, details string)
 	CreateEventStock(req domain.CreateEventRequest) error
+	GetEventDetails(eventID uint) (*domain.EventDetail, error) // 🚀 Add this line
 }
 
 func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
@@ -34,24 +35,21 @@ func HandleTicketCheckin(bookingSvc *service.BookingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ticketID := c.Param("id")
 
-		// 🚀 CRITICAL: We enforce Event ID validation here
 		eventIDStr := c.Query("event_id")
 		if eventIDStr == "" {
 			c.JSON(400, gin.H{"error": "Event ID is required for scanning"})
 			return
 		}
 
-		// Convert string to uint safely
 		var eventID uint
 		if _, err := fmt.Sscanf(eventIDStr, "%d", &eventID); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid Event ID format"})
 			return
 		}
 
-		// Call the service with the Event ID restriction
+		// 🚀 Uses the service to enforce the "Wrong Event" business rule
 		ticket, err := bookingSvc.CheckInTicket(ticketID, eventID)
 		if err != nil {
-			// Return 409 Conflict for business rule violations (Wrong Event / Already Used)
 			c.JSON(409, gin.H{"error": err.Error()})
 			return
 		}
@@ -183,48 +181,6 @@ func HandleCheckout(bookingSvc *service.BookingService) gin.HandlerFunc {
 	}
 }
 
-// func handleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		var input struct {
-// 			Name     string `json:"name" binding:"required"`
-// 			Email    string `json:"email" binding:"required,email"`
-// 			Password string `json:"password" binding:"required,min=6"`
-// 		}
-
-// 		if err := c.ShouldBindJSON(&input); err != nil {
-// 			c.JSON(400, gin.H{"error": "Invalid input: " + err.Error()})
-// 			return
-// 		}
-
-// 		// 1. Create the user (Service handles password hashing)
-// 		// We hardcode the role to "customer" for public signups
-// 		user, err := bookingSvc.CreateUser(input.Name, input.Email, input.Password, "customer")
-// 		if err != nil {
-// 			c.JSON(500, gin.H{"error": "User with this email may already exist"})
-// 			return
-// 		}
-
-// 		// 2. 🚀 THE REFINEMENT: Generate a token immediately
-// 		// This allows the mobile app to save the token and continue to checkout
-// 		token, err := bookingSvc.Login(input.Email, input.Password)
-// 		if err != nil {
-// 			// If token generation fails, we still created the user,
-// 			// but they'll have to log in manually.
-// 			c.JSON(201, gin.H{
-// 				"message": "User created, please log in",
-// 				"user":    user,
-// 			})
-// 			return
-// 		}
-
-// 		c.JSON(201, gin.H{
-// 			"message": "Registration successful",
-// 			"token":   token,
-// 			"user":    user,
-// 		})
-// 	}
-// }
-
 func HandleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
@@ -270,5 +226,52 @@ func HandleUserRegistration(bookingSvc *service.BookingService) gin.HandlerFunc 
 				"points": user.Points, // Should show 100
 			},
 		})
+	}
+}
+
+func HandleUpdateEvent(bookingSvc *service.BookingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+		var eventID uint
+		if _, err := fmt.Sscanf(idParam, "%d", &eventID); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid Event ID"})
+			return
+		}
+
+		var req domain.UpdateEventRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := bookingSvc.UpdateEvent(eventID, req); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Log the action for security
+		// userID := c.MustGet("userID").(uint)
+		// (Assuming you expose a method to record logs, or you can skip this for now)
+
+		c.JSON(200, gin.H{"message": "Event updated successfully"})
+	}
+}
+
+func HandleGetEventDetails(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+		var eventID uint
+		if _, err := fmt.Sscanf(idParam, "%d", &eventID); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid Event ID"})
+			return
+		}
+
+		details, err := repo.GetEventDetails(eventID)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Event not found"})
+			return
+		}
+
+		c.JSON(200, details)
 	}
 }

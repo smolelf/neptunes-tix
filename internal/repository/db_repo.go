@@ -97,6 +97,65 @@ func (d *dbRepo) GetAll(limit int, offset int, category string, available bool, 
 	return tickets, total, err
 }
 
+// Check if it's safe to delete a category
+func (d *dbRepo) CountSoldTickets(eventID uint, category string) (int64, error) {
+	var count int64
+	err := d.db.Model(&domain.Ticket{}).
+		Where("event_id = ? AND category = ? AND is_sold = ?", eventID, category, true).
+		Count(&count).Error
+	return count, err
+}
+
+// Hard delete unsold tickets
+func (d *dbRepo) DeleteTicketsByCategory(eventID uint, category string) error {
+	return d.db.Where("event_id = ? AND category = ? AND is_sold = ?", eventID, category, false).
+		Delete(&domain.Ticket{}).Error
+}
+
+// Bulk insert
+func (d *dbRepo) CreateTicketBatch(tickets []domain.Ticket) error {
+	return d.db.Create(&tickets).Error
+}
+
+// Update basic event info
+func (d *dbRepo) UpdateEvent(event *domain.Event) error {
+	return d.db.Save(event).Error
+}
+
+// internal/repository/db_repo.go
+
+// 🚀 Struct to hold the reconstructed Tier data
+
+func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDetail, error) {
+
+	// 1. Fetch Basic Event Info
+	var event domain.Event
+	if err := d.db.First(&event, eventID).Error; err != nil {
+		return nil, err
+	}
+
+	// 2. Reconstruct Tiers
+	// 🚀 CRITICAL FIX: Use the 'domain.TierStats' type we just created
+	var tiers []domain.TierStats
+
+	err := d.db.Model(&domain.Ticket{}).
+		Select("category, price, COUNT(*) as stock, SUM(CASE WHEN is_sold = true THEN 1 ELSE 0 END) as sold").
+		Where("event_id = ?", eventID).
+		Group("category, price").
+		Scan(&tiers).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Return the Combined Object
+	// Since we embedded 'Event' in the domain struct, the field name is implicitly 'Event'
+	return &domain.EventDetail{
+		Event: event,
+		Tiers: tiers,
+	}, nil
+}
+
 // --- MARKETPLACE & BOOKING ---
 
 func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
@@ -113,7 +172,7 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 	query := d.db.Table("tickets").
 		Select("tickets.event_id, events.name as event_name, events.venue as event_venue, events.date as event_date, tickets.category, tickets.price, COUNT(*) AS stock").
 		Joins("JOIN events ON events.id = tickets.event_id").
-		Where("tickets.is_sold = ? AND tickets.order_id IS NULL", false).
+		Where("tickets.is_sold = ? AND tickets.order_id IS NULL AND tickets.deleted_at IS NULL", false).
 		Group("tickets.event_id, events.name, events.venue, events.date, tickets.category, tickets.price")
 
 	if search != "" {
