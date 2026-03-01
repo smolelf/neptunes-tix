@@ -76,7 +76,29 @@ export default function AdminDashboardScreen() {
           </View>
         </ScrollView>
 
-        {/* 🛠️ 2. Manage Events Section */}
+        {/* 🏷️ 2. Store Management Section (NEW) */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Store Management</Text>
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.menuRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => navigation.navigate('ManageCoupons')}
+        >
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.iconCircle, { backgroundColor: 'rgba(255, 149, 0, 0.1)' }]}>
+              <Ionicons name="pricetag-outline" size={22} color="#FF9500" />
+            </View>
+            <View>
+              <Text style={[styles.menuName, { color: colors.text }]}>Promo Codes</Text>
+              <Text style={{ color: colors.subText, fontSize: 12 }}>Create and manage discounts</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.subText} />
+        </TouchableOpacity>
+
+
+        {/* 🛠️ 3. Manage Events Section */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Manage Events</Text>
           <TouchableOpacity onPress={() => navigation.navigate('CreateEvent')}>
@@ -114,7 +136,6 @@ export default function AdminDashboardScreen() {
   );
 }
 
-// Keep your existing StyleSheet here...
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
@@ -124,7 +145,13 @@ const styles = StyleSheet.create({
   statCard: { width: 140, height: 120, borderRadius: 16, padding: 15, marginRight: 15, justifyContent: 'space-between', elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
   cardLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', marginTop: 5 },
   cardValue: { color: 'white', fontSize: 22, fontWeight: '900' },
-  eventRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  
+  // New Styles for Menu Items
+  menuRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 10, borderWidth: 1 },
+  iconCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  menuName: { fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
+  
+  eventRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 10, borderWidth: 1 },
   eventName: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   editBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,122,255,0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 },
   editBtnText: { color: '#007AFF', fontWeight: 'bold', marginLeft: 5, fontSize: 13 }

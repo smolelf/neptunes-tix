@@ -122,10 +122,6 @@ func (d *dbRepo) UpdateEvent(event *domain.Event) error {
 	return d.db.Save(event).Error
 }
 
-// internal/repository/db_repo.go
-
-// 🚀 Struct to hold the reconstructed Tier data
-
 func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDetail, error) {
 
 	// 1. Fetch Basic Event Info
@@ -268,6 +264,54 @@ func (d *dbRepo) CreateOrderItem(orderID uint, category string, quantity int) er
 		Where("event_id = (SELECT event_id FROM orders WHERE id = ?) AND category = ? AND order_id IS NULL", orderID, category).
 		Limit(quantity).
 		Update("order_id", orderID).Error
+}
+
+func (d *dbRepo) GetValidCoupon(code string) (*domain.Coupon, error) {
+	var coupon domain.Coupon
+
+	err := d.db.Where("code = ? AND is_active = ?", code, true).First(&coupon).Error
+	if err != nil {
+		return nil, fmt.Errorf("invalid promo code")
+	}
+
+	// 1. Check Expiry Date
+	if time.Now().After(coupon.ExpiryDate) {
+		return nil, fmt.Errorf("this promo code has expired")
+	}
+
+	// 2. Check Usage Limits (if limit is greater than 0)
+	if coupon.UsageLimit > 0 && coupon.UsedCount >= coupon.UsageLimit {
+		return nil, fmt.Errorf("this promo code has reached its usage limit")
+	}
+
+	return &coupon, nil
+}
+
+func (d *dbRepo) IncrementCouponUsage(couponID uint) error {
+	return d.db.Model(&domain.Coupon{}).Where("id = ?", couponID).
+		Update("used_count", gorm.Expr("used_count + ?", 1)).Error
+}
+
+// --- COUPON MANAGEMENT METHODS ---
+
+func (d *dbRepo) CreateCoupon(coupon *domain.Coupon) error {
+	return d.db.Create(coupon).Error
+}
+
+func (d *dbRepo) GetAllCoupons() ([]domain.Coupon, error) {
+	var coupons []domain.Coupon
+	// Sort by newest first
+	err := d.db.Order("created_at desc").Find(&coupons).Error
+	return coupons, err
+}
+
+func (d *dbRepo) UpdateCoupon(id string, updateData domain.Coupon) error {
+	// Updates only non-zero fields provided in the JSON payload
+	return d.db.Model(&domain.Coupon{}).Where("id = ?", id).Updates(updateData).Error
+}
+
+func (d *dbRepo) DeleteCoupon(id string) error {
+	return d.db.Delete(&domain.Coupon{}, "id = ?", id).Error
 }
 
 // --- SCANNING ---

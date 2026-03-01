@@ -5,11 +5,13 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet,
 import { AuthContext } from '../context/AuthContext';
 import { ThemeContext } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons'; // 🚀 Added for the back icon
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SignupScreen({ route, navigation }: any) {
     const { signUp } = useContext(AuthContext);
     const { colors } = useContext(ThemeContext);
     const { targetTicket } = route.params || {};
+    const insets = useSafeAreaInsets();
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -94,16 +96,9 @@ export default function SignupScreen({ route, navigation }: any) {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
         >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={[styles.container, { backgroundColor: colors.background }]}>
-                    {/* 🚀 NEW: Back Button */}
-                    <TouchableOpacity 
-                        style={styles.backButton} 
-                        onPress={() => navigation.goBack()}
-                    >
-                        <Ionicons name="chevron-back" size={28} color={colors.text} />
-                    </TouchableOpacity>
-
+            <View style={{ flex: 1, backgroundColor: colors.background }}>
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.container}>
                     <View style={styles.content}>
                         {/* 🚀 Changed to center alignment */}
                         <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
@@ -201,6 +196,15 @@ export default function SignupScreen({ route, navigation }: any) {
                     <LoadingOverlay visible={loading} colors={colors} />
                 </View>
         </TouchableWithoutFeedback>
+                {/* 🚀 NEW: Back Button - Moved to end to ensure z-index/stacking order */}
+                <TouchableOpacity 
+                    style={[styles.backButton, { top: insets.top + 10 }]} 
+                    onPress={() => navigation.goBack()}
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                >
+                    <Ionicons name="chevron-back" size={28} color={colors.text} />
+                </TouchableOpacity>
+        </View>
         </KeyboardAvoidingView>
     );
 }

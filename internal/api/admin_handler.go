@@ -17,7 +17,11 @@ type AdminRepo interface {
 	BulkCheckIn(ticketIDs []string) error
 	RecordLog(userID uint, action, targetID, details string)
 	CreateEventStock(req domain.CreateEventRequest) error
-	GetEventDetails(eventID uint) (*domain.EventDetail, error) // 🚀 Add this line
+	GetEventDetails(eventID uint) (*domain.EventDetail, error)
+	CreateCoupon(coupon *domain.Coupon) error
+	GetAllCoupons() ([]domain.Coupon, error)
+	UpdateCoupon(id string, updateData domain.Coupon) error
+	DeleteCoupon(id string) error
 }
 
 func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
@@ -135,6 +139,7 @@ func HandleDeleteTicket(bookingSvc *service.BookingService) gin.HandlerFunc {
 type CheckoutInput struct {
 	EventID      uint                   `json:"event_id" binding:"required"`
 	RedeemPoints int                    `json:"redeem_points"`
+	CouponCode   string                 `json:"coupon_code"`
 	Items        []service.CheckoutItem `json:"items" binding:"required,gt=0"`
 }
 
@@ -167,7 +172,7 @@ func HandleCheckout(bookingSvc *service.BookingService) gin.HandlerFunc {
 		}
 
 		// 🚀 The service now handles multiple items in a single transaction
-		order, err := bookingSvc.CreateMultiItemOrder(userID, input.EventID, input.Items, input.RedeemPoints)
+		order, err := bookingSvc.CreateMultiItemOrder(userID, input.EventID, input.Items, input.RedeemPoints, input.CouponCode)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Checkout failed: " + err.Error()})
 			return
@@ -273,5 +278,68 @@ func HandleGetEventDetails(repo AdminRepo) gin.HandlerFunc {
 		}
 
 		c.JSON(200, details)
+	}
+}
+
+func HandleCreateCoupon(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var coupon domain.Coupon
+		if err := c.ShouldBindJSON(&coupon); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Ensure default values
+		if coupon.UsageLimit == 0 {
+			coupon.UsageLimit = 100 // Default limit if not set
+		}
+
+		if err := repo.CreateCoupon(&coupon); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create coupon"})
+			return
+		}
+		c.JSON(201, gin.H{"message": "Coupon created!"})
+	}
+}
+
+// 2. List Coupons
+func HandleListCoupons(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		coupons, err := repo.GetAllCoupons()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to fetch coupons"})
+			return
+		}
+		c.JSON(200, coupons)
+	}
+}
+
+// 3. Update Coupon
+func HandleUpdateCoupon(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var updateData domain.Coupon
+		if err := c.ShouldBindJSON(&updateData); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := repo.UpdateCoupon(id, updateData); err != nil {
+			c.JSON(500, gin.H{"error": "Update failed"})
+			return
+		}
+		c.JSON(200, gin.H{"message": "Coupon updated"})
+	}
+}
+
+// 4. Delete Coupon
+func HandleDeleteCoupon(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if err := repo.DeleteCoupon(id); err != nil {
+			c.JSON(500, gin.H{"error": "Delete failed"})
+			return
+		}
+		c.JSON(200, gin.H{"message": "Coupon deleted"})
 	}
 }

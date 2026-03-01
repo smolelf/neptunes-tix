@@ -203,6 +203,38 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 				"points_earned": order.PointsEarned,
 			})
 		})
+
+		userAuth.POST("/coupons/validate", func(c *gin.Context) {
+			var req struct {
+				Code    string `json:"code" binding:"required"`
+				EventID uint   `json:"event_id" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+
+			// 1. Check if coupon exists, is active, and hasn't expired
+			coupon, err := repo.GetValidCoupon(req.Code)
+			if err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+
+			// 2. Check if coupon is restricted to a specific event
+			if coupon.EventID != nil && *coupon.EventID != req.EventID {
+				c.JSON(400, gin.H{"error": "This promo code is not valid for this event"})
+				return
+			}
+
+			// 3. Return the discount details to the frontend
+			c.JSON(200, gin.H{
+				"id":            coupon.ID,
+				"code":          coupon.Code,
+				"discount":      coupon.Discount,
+				"discount_type": coupon.DiscountType,
+			})
+		})
 	}
 
 	// --- 👮 ADMINISTRATIVE & AGENT ROUTES ---
@@ -224,6 +256,11 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
 			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
 			adminOnly.PUT("/admin/events/:id", HandleUpdateEvent(bookingSvc))
+
+			adminOnly.POST("/admin/coupons", HandleCreateCoupon(adminRepo))
+			adminOnly.GET("/admin/coupons", HandleListCoupons(adminRepo))
+			adminOnly.PUT("/admin/coupons/:id", HandleUpdateCoupon(adminRepo))
+			adminOnly.DELETE("/admin/coupons/:id", HandleDeleteCoupon(adminRepo))
 		}
 	}
 }

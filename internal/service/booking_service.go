@@ -221,7 +221,7 @@ func (s *BookingService) generateTickets(repo domain.TicketRepository, eventID u
 
 // --- NEW MULTI-TIER CHECKOUT LOGIC ---
 
-func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items []CheckoutItem, points int) (*domain.Order, error) {
+func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items []CheckoutItem, points int, couponCode string) (*domain.Order, error) {
 	var capturedOrder *domain.Order
 	var mockURL string
 
@@ -240,7 +240,6 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 
 		// 2. Validate items, calculate total, and gather tickets
 		for _, item := range items {
-			// Find specific sequential tickets available for this event/category
 			tickets, err := txRepo.GetAvailableSequential(eventID, item.Category, item.Quantity)
 			if err != nil {
 				return err
@@ -249,20 +248,42 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 				return fmt.Errorf("insufficient stock for %s. Requested: %d, Available: %d", item.Category, item.Quantity, len(tickets))
 			}
 
-			// Add price to total and add tickets to reservation list
 			for _, t := range tickets {
 				totalAmount += t.Price
 				reservedTickets = append(reservedTickets, t)
 			}
 		}
 
-		// 3. Handle point redemption logic
+		// 🚀 FIX 2: Coupon Variables properly scoped inside the transaction
+		var couponDiscount float64 = 0
+		var appliedCouponID *uint
+
+		if couponCode != "" {
+			coupon, err := txRepo.GetValidCoupon(couponCode)
+			if err != nil {
+				return err
+			}
+
+			// 🔒 Security Check
+			if coupon.EventID != nil && *coupon.EventID != eventID {
+				return fmt.Errorf("this promo code is not valid for this event")
+			}
+
+			if coupon.DiscountType == "percentage" {
+				couponDiscount = totalAmount * (coupon.Discount / 100.0)
+			} else {
+				couponDiscount = coupon.Discount
+			}
+
+			appliedCouponID = &coupon.ID
+		}
+
+		// 3. Handle point redemption logic & Coupon Discount
 		discount := float64(points) / 100.0
-		finalPrice := math.Max(0, totalAmount-discount)
-		pointsToEarn := int(finalPrice * 10) // RM1 = 10 pts
+		finalPrice := math.Max(0, totalAmount-discount-couponDiscount)
+		pointsToEarn := int(finalPrice * 10)
 
 		// 4. Create the Main Order
-		// 🚀 FIX: Removed EventID from struct init to match typical domain.Order schema
 		capturedOrder = &domain.Order{
 			UserID:        userID,
 			TotalAmount:   finalPrice,
@@ -275,14 +296,20 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 			return err
 		}
 
-		// 5. Link Tickets to Order (This replaces UpdateStock and CreateOrderItem)
-		// Since we fetched physical ticket rows in Step 2, we just update their OrderID
+		// 5. Link Tickets to Order
 		for i := range reservedTickets {
 			reservedTickets[i].OrderID = &capturedOrder.ID
-			// Do NOT mark IsSold yet. That happens after payment.
 		}
 		if err := txRepo.UpdateTicketBatch(reservedTickets); err != nil {
 			return err
+		}
+
+		// 🚀 FIX 3: Increment usage INSIDE the transaction so it rolls back if payment URL generation fails
+		if appliedCouponID != nil {
+			// Note: Assuming your repository interface expects just the ID now
+			if err := txRepo.IncrementCouponUsage(*appliedCouponID); err != nil {
+				return err
+			}
 		}
 
 		// 6. Generate Payment URL and attach to Order
@@ -297,7 +324,6 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 		return nil, err
 	}
 
-	// Update local struct for response
 	capturedOrder.PaymentURL = mockURL
 	return capturedOrder, nil
 }

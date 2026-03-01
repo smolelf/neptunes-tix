@@ -69,6 +69,14 @@ type TicketRepository interface {
 	}, error)
 	CreateOrderItem(orderID uint, category string, quantity int) error
 
+	// --- COUPON ---
+	GetValidCoupon(code string) (*Coupon, error)
+	IncrementCouponUsage(couponID uint) error
+	// CreateCoupon(coupon *Coupon) error
+	// GetAllCoupons() ([]Coupon, error)
+	// UpdateCoupon(id string, updateData Coupon) error
+	// DeleteCoupon(id string) error
+
 	// --- EVENT & GENERATION ---
 	CreateEventStock(req CreateEventRequest) error
 	GetEventByID(id uint) (*Event, error)

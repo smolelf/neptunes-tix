@@ -24,6 +24,7 @@ import PointsHistoryScreen from './src/screens/PointsHistoryScreen';
 import SignupScreen from './src/screens/SignupScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
 import EditEventScreen from './src/screens/EditEventScreen';
+import ManageCouponsScreen from './src/screens/ManageCouponScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   PointsHistory: undefined;
   EditProfile: undefined;
   EditEvent: { event: any };
+  ManageCoupons: undefined;
 };
 
 export type MainTabParamList = {
@@ -45,7 +47,7 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
@@ -146,9 +148,8 @@ function AppNavigator() {
     <NavigationContainer theme={MyTheme}>
       <Stack.Navigator 
         initialRouteName="Home"
-        // 🚀 THE FIX IS HERE: Global options applied to ALL stack screens
         screenOptions={{
-          headerBackTitleVisible: false, // Hides "Home" text (just shows arrow on iOS)
+          headerBackTitleVisible: false,
           headerTintColor: '#007AFF',    // Ensures the arrow is clearly visible and clickable
           headerTitleStyle: { color: colors.text }, // Adjusts text for dark mode
         }}
@@ -161,32 +162,32 @@ function AppNavigator() {
         <Stack.Screen 
           name="Login" 
           component={LoginScreen} 
-          options={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} 
+          options={{ headerShown: false, }} 
         />
         <Stack.Screen 
           name="Signup" 
           component={SignupScreen} 
-          options={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} 
+          options={{ headerShown: false, }} 
         />
         <Stack.Screen 
           name="OrderDetails" 
           component={OrderDetailsScreen} 
-          options={{ title: 'Your Tickets', contentStyle: { backgroundColor: colors.background } }} 
+          options={{ title: 'Your Tickets', }} 
         />
         <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboardScreen} 
-          options={{ title: 'Event Analytics', contentStyle: { backgroundColor: colors.background } }} 
+          options={{ title: 'Event Analytics', }} 
         />
         <Stack.Screen 
           name="CreateEvent" 
           component={CreateEventScreen} 
-          options={{ title: 'Launch New Event', contentStyle: { backgroundColor: colors.background } }} 
+          options={{ title: 'Launch New Event', }} 
         />
         <Stack.Screen 
           name="PointsHistory" 
           component={PointsHistoryScreen} 
-          options={{ title: 'Points History', contentStyle: { backgroundColor: colors.background } }} 
+          options={{ title: 'Points History', }} 
         />
         <Stack.Screen
           name="EditProfile"
@@ -194,7 +195,6 @@ function AppNavigator() {
           options={{
             title: 'Edit Profile',
             presentation: 'modal',
-            contentStyle: { backgroundColor: colors.background }
           }}
         />
         <Stack.Screen 
@@ -203,8 +203,12 @@ function AppNavigator() {
           options={{
             title: 'Edit Event',
             presentation: 'modal',
-            contentStyle: { backgroundColor: colors.background }
           }}
+        />
+        <Stack.Screen 
+          name="ManageCoupons" 
+          component={ManageCouponsScreen} 
+          options={{ title: 'Manage Coupons', }} 
         />
       </Stack.Navigator>
     </NavigationContainer>
