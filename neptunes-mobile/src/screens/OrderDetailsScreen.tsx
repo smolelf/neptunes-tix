@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
   TouchableOpacity, Linking, ActivityIndicator,
@@ -8,14 +8,12 @@ import { ThemeContext } from '../context/ThemeContext';
 import apiClient from '../api/client';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 
 export default function OrderDetailsScreen({ route }: any) {
-  const { colors, isDark } = useContext(ThemeContext);
+  const { colors } = useContext(ThemeContext);
   const { orderId, order: initialOrder } = route.params;
 
-  const [order, setOrder] = useState(initialOrder);
+  const [order, setOrder] = useState<any>(initialOrder);
   const [loading, setLoading] = useState(!initialOrder);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -42,14 +40,23 @@ export default function OrderDetailsScreen({ route }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchOrderDetails();
-    setRefreshing(false);
   };
 
   const openMap = (url: string) => {
-    if (url) {
-      Linking.openURL(url).catch(() => alert("Couldn't open map link."));
-    }
+    if (url) Linking.openURL(url).catch(() => alert("Couldn't open map link."));
   };
+
+  // 🚀 MATH: Group tickets by category to build the invoice
+  const ticketCounts = useMemo(() => {
+    if (!order?.tickets) return {};
+    return order.tickets.reduce((acc: any, ticket: any) => {
+      if (!acc[ticket.category]) {
+        acc[ticket.category] = { count: 0, price: ticket.price || 0 };
+      }
+      acc[ticket.category].count += 1;
+      return acc;
+    }, {});
+  }, [order]);
 
   if (loading) {
     return (
@@ -89,6 +96,50 @@ export default function OrderDetailsScreen({ route }: any) {
                   )}
                 </View>
               )}
+
+              {/* 🧾 NEW: INVOICE SUMMARY BOX */}
+              <View style={[styles.invoiceBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.invoiceTitle, { color: colors.text }]}>Order Summary</Text>
+                  
+                  {Object.keys(ticketCounts).map(cat => (
+                     <View style={styles.invoiceRow} key={cat}>
+                        <Text style={[styles.invoiceItem, { color: colors.text }]}>{ticketCounts[cat].count}x {cat}</Text>
+                        <Text style={[styles.invoiceAmount, { color: colors.text }]}>RM {(ticketCounts[cat].count * ticketCounts[cat].price).toFixed(2)}</Text>
+                     </View>
+                  ))}
+
+                  {(order.coupon_discount > 0 || order.points_applied > 0) && (
+                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  )}
+
+                  {order.coupon_discount > 0 && (
+                      <View style={styles.invoiceRow}>
+                        <Text style={styles.invoiceItemDiscount}>Promo Code</Text>
+                        <Text style={styles.invoiceAmountDiscount}>-RM {order.coupon_discount.toFixed(2)}</Text>
+                     </View>
+                  )}
+
+                  {order.points_applied > 0 && (
+                      <View style={styles.invoiceRow}>
+                        <Text style={styles.invoiceItemDiscount}>Points Redeemed</Text>
+                        <Text style={styles.invoiceAmountDiscount}>-RM {(order.points_applied / 100).toFixed(2)}</Text>
+                     </View>
+                  )}
+
+                  <View style={[styles.divider, { backgroundColor: colors.border, height: 2 }]} />
+
+                  <View style={styles.invoiceRow}>
+                      <Text style={[styles.invoiceTotal, { color: colors.text }]}>Grand Total</Text>
+                      <Text style={styles.invoiceTotalAmount}>RM {order.total_amount?.toFixed(2)}</Text>
+                  </View>
+
+                  {isPaid && order.payment_method && (
+                      <View style={styles.paymentDetailsBox}>
+                          <Text style={styles.paymentDetailText}>Paid via {order.payment_method}</Text>
+                          <Text style={styles.paymentDetailText}>Ref: {order.gateway_ref}</Text>
+                      </View>
+                  )}
+              </View>
 
               {isPending && (
                   <TouchableOpacity 
@@ -182,28 +233,22 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center' },
   mapButton: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
   mapButtonText: { color: '#007AFF', marginLeft: 5, fontWeight: '600', fontSize: 13 },
-  downloadBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0,122,255,0.1)',
-      paddingVertical: 12,
-      paddingHorizontal: 25,
-      borderRadius: 15,
-      marginVertical: 15,
-      borderWidth: 1,
-      borderColor: 'rgba(0,122,255,0.2)',
-      gap: 10,
-  },
-  downloadText: { color: '#007AFF', fontWeight: 'bold', fontSize: 14 },
-  ticketCard: {
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.1)',
-    position: 'relative',
-    overflow: 'hidden',
-  },
+  
+  // 🚀 NEW: Invoice Box Styles
+  invoiceBox: { width: '100%', padding: 20, borderRadius: 16, borderWidth: 1, marginTop: 15, marginBottom: 10 },
+  invoiceTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  invoiceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  invoiceItem: { fontSize: 15 },
+  invoiceAmount: { fontSize: 15, fontWeight: '600' },
+  invoiceItemDiscount: { fontSize: 15, color: '#28a745' },
+  invoiceAmountDiscount: { fontSize: 15, fontWeight: '600', color: '#28a745' },
+  invoiceTotal: { fontSize: 16, fontWeight: 'bold' },
+  invoiceTotalAmount: { fontSize: 20, fontWeight: '900', color: '#007AFF' },
+  divider: { width: '100%', height: 1, marginVertical: 12 },
+  paymentDetailsBox: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.2)', alignItems: 'center' },
+  paymentDetailText: { fontSize: 12, color: 'gray', marginBottom: 2 },
+
+  ticketCard: { borderRadius: 20, padding: 24, marginBottom: 25, borderWidth: 1, borderColor: 'rgba(128,128,128,0.1)', position: 'relative', overflow: 'hidden' },
   notch: { position: 'absolute', width: 24, height: 24, borderRadius: 12, top: '78%', zIndex: 5 },
   notchLeft: { left: -12 },
   notchRight: { right: -12 },
@@ -218,20 +263,10 @@ const styles = StyleSheet.create({
   footer: { width: '100%', marginTop: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   category: { fontWeight: '800', textTransform: 'uppercase', fontSize: 13 },
   status: { fontWeight: 'bold', fontSize: 13 },
-  scannedOverlay: {
-    position: 'absolute', top: '45%', alignSelf: 'center', zIndex: 10, backgroundColor: 'rgba(255, 59, 48, 0.9)',
-    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, transform: [{ rotate: '-15deg' }],
-    borderWidth: 2, borderColor: '#fff',
-  },
+  scannedOverlay: { position: 'absolute', top: '45%', alignSelf: 'center', zIndex: 10, backgroundColor: 'rgba(255, 59, 48, 0.9)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, transform: [{ rotate: '-15deg' }], borderWidth: 2, borderColor: '#fff' },
   scannedText: { color: '#fff', fontWeight: '900', fontSize: 22 },
-  pendingBanner: {
-    backgroundColor: '#ff9500', flexDirection: 'row', alignItems: 'center',
-    padding: 14, borderRadius: 12, marginVertical: 10, width: '100%', justifyContent: 'center', gap: 10,
-  },
+  pendingBanner: { backgroundColor: '#ff9500', flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, marginVertical: 10, width: '100%', justifyContent: 'center', gap: 10 },
   bannerText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  lockedOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 10, justifyContent: 'center', alignItems: 'center',
-  },
+  lockedOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 10, justifyContent: 'center', alignItems: 'center' },
   lockedText: { color: '#fff', fontWeight: '900', fontSize: 18, marginTop: 10 },
 });

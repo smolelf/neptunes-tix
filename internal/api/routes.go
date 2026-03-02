@@ -6,6 +6,7 @@ import (
 	"neptunes-tix/internal/middleware"
 	"neptunes-tix/internal/service"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,7 +70,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		orderID := c.PostForm("order_id")
 		isPaid := c.PostForm("paid") == "true"
 		if isPaid {
-			bookingSvc.FinalizePayment(orderID)
+			// Added fallback strings so it compiles
+			bookingSvc.FinalizePayment(orderID, "Webhook Callback", "SYSTEM")
 		}
 		c.Status(200)
 	})
@@ -83,6 +85,12 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
                 <p>Order ID: <strong>%s</strong></p>
                 <div style="margin-top: 20px;">
                     <form action="/mock-billplz/pay/%s" method="POST">
+                        <select name="payment_method" style="padding: 10px; font-size: 16px; margin-bottom: 20px; border-radius: 5px;">
+                            <option value="Maybank2u">FPX - Maybank2u</option>
+                            <option value="CIMB Clicks">FPX - CIMB Clicks</option>
+                            <option value="Touch 'n Go eWallet">Touch 'n Go eWallet</option>
+                            <option value="Credit/Debit Card">Credit/Debit Card</option>
+                        </select><br/>
                         <button type="submit" style="background: #28a745; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 18px; cursor: pointer;">
                             Simulate Successful Payment
                         </button>
@@ -98,12 +106,17 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 
 	r.POST("/mock-billplz/pay/:id", func(c *gin.Context) {
 		orderID := c.Param("id")
-		err := bookingSvc.FinalizePayment(orderID)
+		method := c.PostForm("payment_method")
+
+		// Generate a random 8-digit mock invoice number
+		invoiceRef := fmt.Sprintf("BPZ-%d", time.Now().UnixMilli()%100000000)
+
+		err := bookingSvc.FinalizePayment(orderID, method, invoiceRef)
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.Writer.Write([]byte("<h1>Payment Successful!</h1><p>You can close this window and return to the app.</p>"))
+		c.Writer.Write([]byte(fmt.Sprintf("<h1>Payment Successful!</h1><p>Method: %s</p><p>Ref: %s</p><p>You can close this window and return to the app.</p>", method, invoiceRef)))
 	})
 
 	// --- 🛡️ AUTHENTICATED USER ROUTES ---

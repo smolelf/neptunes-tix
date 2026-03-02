@@ -13,9 +13,12 @@ type Order struct {
 	Status      string    `json:"status"` // pending, paid, cancelled
 	Tickets     []Ticket  `json:"tickets"`
 
-	// Payment Gateway Integration (Billplz)
-	BillplzID  string `json:"billplz_id"`
-	PaymentURL string `json:"payment_url"`
+	// Payment Gateway Integration (Billplz) & Coupon
+	BillplzID      string  `json:"billplz_id"`
+	PaymentURL     string  `json:"payment_url"`
+	CouponDiscount float64 `json:"coupon_discount"`
+	PaymentMethod  string  `json:"payment_method"`
+	GatewayRef     string  `json:"gateway_ref"`
 
 	// Loyalty System
 	PointsApplied int `json:"points_applied"`

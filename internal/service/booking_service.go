@@ -285,11 +285,12 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 
 		// 4. Create the Main Order
 		capturedOrder = &domain.Order{
-			UserID:        userID,
-			TotalAmount:   finalPrice,
-			PointsApplied: points,
-			PointsEarned:  pointsToEarn,
-			Status:        "pending",
+			UserID:         userID,
+			TotalAmount:    finalPrice,
+			PointsApplied:  points,
+			PointsEarned:   pointsToEarn,
+			CouponDiscount: couponDiscount, // 🚀 Save the discount amount
+			Status:         "pending",
 		}
 
 		if err := txRepo.CreateOrder(capturedOrder); err != nil {
@@ -328,7 +329,7 @@ func (s *BookingService) CreateMultiItemOrder(userID uint, eventID uint, items [
 	return capturedOrder, nil
 }
 
-func (s *BookingService) FinalizePayment(orderID string) error {
+func (s *BookingService) FinalizePayment(orderID string, method string, ref string) error {
 	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
 		order, err := txRepo.GetOrderById(orderID)
 		if err != nil || order.Status != "pending" {
@@ -337,7 +338,9 @@ func (s *BookingService) FinalizePayment(orderID string) error {
 
 		// 1. Mark Order Paid
 		err = txRepo.UpdateOrderFields(order.ID, map[string]interface{}{
-			"status": "paid",
+			"status":         "paid",
+			"payment_method": method, // 🚀 NEW
+			"gateway_ref":    ref,
 		})
 		if err != nil {
 			return err

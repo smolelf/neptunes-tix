@@ -175,6 +175,8 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 		query = query.Where("events.name ILIKE ?", "%"+search+"%")
 	}
 
+	query = query.Order("tickets.price asc")
+
 	if err := query.Scan(&results).Error; err != nil {
 		return nil, err
 	}
