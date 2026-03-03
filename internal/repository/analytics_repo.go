@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"neptunes-tix/internal/domain"
 )
 
@@ -25,12 +26,13 @@ func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
 
 	var recentLogs []domain.AuditLog
 	d.db.Order("created_at desc").Limit(10).Find(&recentLogs)
+	fmt.Println(recentLogs)
 
 	// Raw SQL grouping is the most efficient way to get this nested data
 	d.db.Table("tickets").
-		Select("events.id as event_id, events.name as event_name,SUM(CASE WHEN tickets.is_sold THEN tickets.price END) as revenue,COUNT(CASE WHEN tickets.is_sold THEN tickets.id END) as sold,COUNT(CASE WHEN tickets.is_sold THEN tickets.checked_in_at END) as scanned").
+		Select("events.id as event_id, events.name as event_name, SUM(tickets.price) as revenue, COUNT(tickets.id) as sold, COUNT(tickets.checked_in_at) as scanned").
 		Joins("join events on events.id = tickets.event_id").
-		// Where("tickets.is_sold = ?", true).
+		Where("tickets.is_sold = ?", true).
 		Group("events.id, events.name").
 		Scan(&eventStats)
 
