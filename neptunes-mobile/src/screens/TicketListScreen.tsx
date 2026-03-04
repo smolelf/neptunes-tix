@@ -54,6 +54,8 @@ export default function TicketListScreen({ route }: any) {
     const lastFetchTime = useRef<number>(0);
     const THROTTLE_MS = 30000;
 
+    const queryRef = useRef('');
+
     const fetchTickets = async (query: string = '', showLoading = true) => {
         try {
             if (showLoading) setLoading(true);
@@ -231,7 +233,7 @@ export default function TicketListScreen({ route }: any) {
                 fetchTickets(searchQuery, false);
                 if (user) refreshUser(); 
             }
-        }, [searchQuery, user]) 
+        }, [user?.id]) 
     );
 
     const debouncedSearch = useCallback(
@@ -241,6 +243,7 @@ export default function TicketListScreen({ route }: any) {
 
     const handleSearchChange = (text: string) => {
         setSearchQuery(text);
+        queryRef.current = text;
         debouncedSearch(text);
     };
 
@@ -252,7 +255,7 @@ export default function TicketListScreen({ route }: any) {
             }
         });
         return () => subscription.remove();
-    }, [searchQuery, user]); 
+    }, [user?.id]); 
 
     useEffect(() => {
         if (route.params?.autoOpenTicket) {

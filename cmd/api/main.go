@@ -6,11 +6,12 @@ import (
 	"os"
 	"time"
 
-	"neptunes-tix/internal/api" // 👈 Importing our new API folder
+	"neptunes-tix/internal/api"
 	"neptunes-tix/internal/domain"
 	"neptunes-tix/internal/repository"
 	"neptunes-tix/internal/service"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
@@ -52,6 +53,34 @@ func main() {
 	}()
 
 	r := gin.Default()
+
+	r.Use(cors.New(cors.Config{
+		// 1. Who is allowed to talk to your API?
+		AllowOrigins: []string{
+			"http://localhost:3000",         // Your local Next.js dev server
+			"https://admin.neptunestix.com", // Your future production web URL
+		},
+
+		// 2. What actions can they perform?
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+
+		// 3. What headers can they send? (Critical for your JWT Auth)
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Accept",
+			"Authorization", // 👈 This allows your Bearer token through!
+		},
+
+		// 4. Expose headers to the frontend (Optional but good)
+		ExposeHeaders: []string{"Content-Length"},
+
+		// 5. Allow cookies/credentials to be sent
+		AllowCredentials: true,
+
+		// 6. Cache the OPTIONS "preflight" response for 12 hours to speed up requests
+		MaxAge: 12 * time.Hour,
+	}))
 
 	// 🚀 Call our new Routes function!
 	api.SetupRoutes(r, repo, bookingSvc)

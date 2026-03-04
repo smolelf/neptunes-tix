@@ -15,11 +15,13 @@ func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
 
 	// 2. Calculate Individual Event Stats
 	type EventResult struct {
-		EventID   uint    `json:"event_id"`
-		EventName string  `json:"event_name"`
-		Revenue   float64 `json:"revenue"`
-		Sold      int64   `json:"sold"`
-		Scanned   int64   `json:"scanned"`
+		EventID    uint    `json:"event_id"`
+		EventName  string  `json:"event_name"`
+		EventDate  string  `json:"event_date"`
+		EventVenue string  `json:"event_venue"`
+		Revenue    float64 `json:"revenue"`
+		Sold       int64   `json:"sold"`
+		Scanned    int64   `json:"scanned"`
 	}
 	var eventStats []EventResult
 
@@ -29,7 +31,11 @@ func (d *dbRepo) GetAdminStats() (map[string]interface{}, error) {
 
 	// Raw SQL grouping is the most efficient way to get this nested data
 	d.db.Table("tickets").
-		Select("events.id as event_id, events.name as event_name,SUM(CASE WHEN tickets.is_sold THEN tickets.price END) as revenue,COUNT(CASE WHEN tickets.is_sold THEN tickets.id END) as sold,COUNT(CASE WHEN tickets.is_sold THEN tickets.checked_in_at END) as scanned").
+		Select("events.id as event_id, events.name as event_name, " +
+			"events.date as event_date, events.venue as event_venue, " +
+			"SUM(CASE WHEN tickets.is_sold THEN tickets.price END) as revenue, " +
+			"COUNT(CASE WHEN tickets.is_sold THEN tickets.id END) as sold, " +
+			"COUNT(CASE WHEN tickets.is_sold THEN tickets.checked_in_at END) as scanned").
 		Joins("join events on events.id = tickets.event_id").
 		// Where("tickets.is_sold = ?", true).
 		Group("events.id, events.name").

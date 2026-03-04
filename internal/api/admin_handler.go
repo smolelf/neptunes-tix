@@ -111,18 +111,24 @@ func HandleBulkCheckin(repo AdminRepo) gin.HandlerFunc {
 	}
 }
 
-func HandleCreateEvent(repo AdminRepo) gin.HandlerFunc {
+func HandleCreateEvent(bookingSvc *service.BookingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req domain.CreateEventRequest
+
+		// 1. Parse JSON (Handler Job)
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		if err := repo.CreateEventStock(req); err != nil {
-			c.JSON(500, gin.H{"error": "Failed to generate stock"})
+
+		// 2. Call Service (Business Logic Job)
+		if err := bookingSvc.CreateFullEvent(req); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to launch event: " + err.Error()})
 			return
 		}
-		c.JSON(201, gin.H{"message": "Event created successfully!"})
+
+		// 3. Return Response (Handler Job)
+		c.JSON(201, gin.H{"message": "Event launched successfully!"})
 	}
 }
 

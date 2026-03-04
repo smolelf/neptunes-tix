@@ -20,7 +20,6 @@ func NewBookingService(repo domain.TicketRepository) *BookingService {
 	return &BookingService{repo: repo}
 }
 
-// 🚀 Defined struct to fix missing type error in parameters
 type CheckoutItem struct {
 	Category string `json:"category" binding:"required"`
 	Quantity int    `json:"quantity" binding:"required,min=1"`
@@ -217,6 +216,24 @@ func (s *BookingService) generateTickets(repo domain.TicketRepository, eventID u
 		return repo.CreateTicketBatch(tickets)
 	}
 	return nil
+}
+
+func (s *BookingService) CreateFullEvent(req domain.CreateEventRequest) error {
+	return s.repo.Transaction(func(txRepo domain.TicketRepository) error {
+		// 1. Logic for creating the event row can be added here
+		// 2. Business Rule: Ensure at least one tier exists
+		if len(req.Tiers) == 0 {
+			return fmt.Errorf("an event must have at least one ticket tier")
+		}
+
+		// 3. Delegate the heavy lifting of stock generation to the repo
+		// This is the call that was previously directly in the handler
+		if err := txRepo.CreateEventStock(req); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // --- NEW MULTI-TIER CHECKOUT LOGIC ---

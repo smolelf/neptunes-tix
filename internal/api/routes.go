@@ -303,7 +303,7 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		adminOnly := adminAuth.Group("/")
 		adminOnly.Use(middleware.AdminOnly())
 		{
-			adminOnly.POST("/admin/events/create", HandleCreateEvent(adminRepo))
+			adminOnly.POST("/admin/events/create", HandleCreateEvent(bookingSvc))
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
 			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
 			adminOnly.PUT("/admin/events/:id", HandleUpdateEvent(bookingSvc))
