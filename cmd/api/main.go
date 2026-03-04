@@ -30,7 +30,7 @@ func main() {
 		log.Fatal("Failed to connect to PostgreSQL:", err)
 	}
 
-	fmt.Println("🐘 Success! Connected to PostgreSQL.")
+	// fmt.Println("🐘 Success! Connected to PostgreSQL.")
 
 	db.AutoMigrate(
 		&domain.User{}, &domain.Ticket{}, &domain.Order{},

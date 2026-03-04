@@ -119,6 +119,44 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		c.Writer.Write([]byte(fmt.Sprintf("<h1>Payment Successful!</h1><p>Method: %s</p><p>Ref: %s</p><p>You can close this window and return to the app.</p>", method, invoiceRef)))
 	})
 
+	//BILLPLZ SIGNATURE ADD
+
+	// r.POST("/payments/webhook", func(c *gin.Context) {
+	// 	// 1. Parse all form data into a map
+	// 	c.Request.ParseForm()
+	// 	params := make(map[string]string)
+	// 	for key, values := range c.Request.PostForm {
+	// 		if len(values) > 0 {
+	// 			params[key] = values[0]
+	// 		}
+	// 	}
+
+	// 	// 2. Validate the signature using your X-Signature Key (from .env)
+	// 	xSignKey := os.Getenv("BILLPLZ_X_SIGNATURE_KEY")
+	// 	if !VerifyBillplzSignature(params, xSignKey) {
+	// 		c.JSON(401, gin.H{"error": "Invalid signature. Request rejected."})
+	// 		return
+	// 	}
+
+	// 	// 3. Process the payment if validation passes
+	// 	orderID := params["id"] // Billplz uses 'id' for the bill ID
+	// 	isPaid := params["paid"] == "true"
+
+	// 	if isPaid {
+	// 		// You would extract actual method/ref from Billplz params
+	// 		method := params["payment_method"]
+	// 		ref := params["id"]
+
+	// 		err := bookingSvc.FinalizePayment(orderID, method, ref)
+	// 		if err != nil {
+	// 			c.JSON(500, gin.H{"error": "Failed to finalize order"})
+	// 			return
+	// 		}
+	// 	}
+
+	// 	c.Status(200)
+	// })
+
 	// --- 🛡️ AUTHENTICATED USER ROUTES ---
 	userAuth := r.Group("/")
 	userAuth.Use(middleware.AuthRequired())
