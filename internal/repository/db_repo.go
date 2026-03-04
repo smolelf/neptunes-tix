@@ -122,7 +122,7 @@ func (d *dbRepo) UpdateEvent(event *domain.Event) error {
 	return d.db.Save(event).Error
 }
 
-func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDetail, error) {
+func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDashboardData, error) {
 
 	// 1. Fetch Basic Event Info
 	var event domain.Event
@@ -130,25 +130,38 @@ func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDetail, error) {
 		return nil, err
 	}
 
-	// 2. Reconstruct Tiers
-	// 🚀 CRITICAL FIX: Use the 'domain.TierStats' type we just created
+	// 2. Run the Aggregation Query for the Tiers
 	var tiers []domain.TierStats
 
+	// 🚀 We added the Revenue calculation to the SQL query
 	err := d.db.Model(&domain.Ticket{}).
-		Select("category, price, COUNT(*) as stock, SUM(CASE WHEN is_sold = true THEN 1 ELSE 0 END) as sold").
+		Select(`
+			category, 
+			price, 
+			COUNT(*) as total, 
+			SUM(CASE WHEN is_sold = true THEN 1 ELSE 0 END) as sold,
+			SUM(CASE WHEN is_sold = true THEN price ELSE 0 END) as revenue
+		`).
 		Where("event_id = ?", eventID).
 		Group("category, price").
+		Order("price asc").
 		Scan(&tiers).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Return the Combined Object
-	// Since we embedded 'Event' in the domain struct, the field name is implicitly 'Event'
-	return &domain.EventDetail{
-		Event: event,
-		Tiers: tiers,
+	// 3. Calculate Global Revenue for this specific event
+	var totalRev float64
+	for _, t := range tiers {
+		totalRev += t.Revenue
+	}
+
+	// 4. Return the new comprehensive data structure
+	return &domain.EventDashboardData{
+		Event:        event,
+		TierStats:    tiers,
+		TotalRevenue: totalRev,
 	}, nil
 }
 
@@ -255,6 +268,7 @@ func (d *dbRepo) GetTicketTier(eventID uint, category string) (struct {
 	err := d.db.Table("tickets").
 		Select("price, COUNT(*) as stock").
 		Where("event_id = ? AND category = ? AND is_sold = ? AND order_id IS NULL", eventID, category, false).
+		Order("price asc").
 		Group("price").Scan(&result).Error
 	return result, err
 }
@@ -446,4 +460,15 @@ func (d *dbRepo) IncrementUserPoints(userID uint, amount int, reason string, ord
 		Type:      txType,
 		CreatedAt: time.Now(),
 	}).Error
+}
+
+// --- ADMIN STUFFS ---
+func (d *dbRepo) GetAdminOrderDetails(orderID string) (*domain.Order, error) {
+	var order domain.Order
+	// Preload everything we need for the slide-out panel!
+	err := d.db.Preload("User").
+		Preload("Tickets").
+		Preload("Tickets.Event").
+		First(&order, "id = ?", orderID).Error
+	return &order, err
 }

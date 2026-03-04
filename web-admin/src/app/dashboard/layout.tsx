@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, CalendarDays, Ticket, Users, CheckSquare } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Ticket, Users,
+    CheckSquare, ReceiptText } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -13,6 +14,7 @@ export default function DashboardLayout({
 
   const navLinks = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Transactions', href: '/dashboard/orders', icon: ReceiptText },
     { name: 'Manage Events', href: '/dashboard/events', icon: CalendarDays },
     { name: 'Promo Codes', href: '/dashboard/coupons', icon: Ticket },
     { name: 'Users & Agents', href: '/dashboard/users', icon: Users },

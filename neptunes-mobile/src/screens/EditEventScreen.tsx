@@ -39,14 +39,15 @@ export default function EditEventScreen({ route, navigation }: any) {
             headers: { Authorization: `Bearer ${token}` }
         });
         
-        const fullData = response.data;
+        const fullData = response.data.event;
+        const tierData = response.data.tier_stats;
         
         // 🚀 FIX 2: Use lowercase to match Go's default JSON output
         setName(fullData.name || fullData.Name || '');
         setVenue(fullData.venue || fullData.Venue || '');
         setDate(fullData.date || fullData.Date || ''); 
         setLocationUrl(fullData.location_url || fullData.LocationURL || '');
-        setCurrentTiers(fullData.tiers || []);
+        setCurrentTiers(tierData || []);
         
       } catch (error) {
         console.error("Failed to load event details", error);

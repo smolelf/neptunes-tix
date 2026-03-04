@@ -9,6 +9,7 @@ type Order struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	UserID      uint      `json:"user_id"`
+	User        User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	TotalAmount float64   `json:"total_amount"`
 	Status      string    `json:"status"` // pending, paid, cancelled
 	Tickets     []Ticket  `json:"tickets"`

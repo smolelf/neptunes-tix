@@ -81,6 +81,7 @@ type TicketRepository interface {
 	CreateEventStock(req CreateEventRequest) error
 	GetEventByID(id uint) (*Event, error)
 	GetAllEvents() ([]Event, error)
+	GetEventDetails(eventID uint) (*EventDashboardData, error)
 
 	// --- ORDER HELPERS ---
 	CreateOrder(order *Order) error

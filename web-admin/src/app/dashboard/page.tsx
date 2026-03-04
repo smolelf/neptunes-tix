@@ -7,6 +7,8 @@ import apiClient from '@/lib/apiClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, CreditCard, Users, Ticket } from 'lucide-react';
 import Cookies from 'js-cookie';
+import Link from 'next/link';
+
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
@@ -112,9 +114,12 @@ export default function DashboardPage() {
                       <td className="px-6 py-4">{event.sold}</td>
                       <td className="px-6 py-4 text-green-600 font-medium">RM {event.revenue?.toLocaleString()}</td>
                       <td className="px-6 py-4 text-right">
-                        <button className="text-blue-600 hover:text-blue-800 font-medium">
-                          Manage
-                        </button>
+                        <Link 
+                            href={`/dashboard/events/${event.event_id}`}  // 🚀 Links to the new Dashboard
+                            className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                        >
+                            Manage
+                        </Link>
                       </td>
                     </tr>
                   ))}

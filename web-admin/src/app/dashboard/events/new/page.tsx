@@ -22,6 +22,7 @@ export default function CreateEventPage() {
   // 1. Basic Event Details
   const [eventData, setEventData] = useState({
     name: '',
+    description: '',
     venue: '',
     date: '',
     doors_open: '',
@@ -57,6 +58,7 @@ export default function CreateEventPage() {
       // Clean up the data types before sending to Go
       const payload = {
         event_name: eventData.name,
+        description: eventData.description,
         venue: eventData.venue,
         date: eventData.date,
         doors_open: eventData.doors_open,
@@ -107,6 +109,15 @@ export default function CreateEventPage() {
                 required
                 value={eventData.name}
                 onChange={e => setEventData({...eventData, name: e.target.value})}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Event Description</label>
+              <Input 
+                placeholder="e.g. Sponsored.." 
+                value={eventData.description}
+                onChange={e => setEventData({...eventData, description: e.target.value})}
               />
             </div>
 

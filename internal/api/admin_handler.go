@@ -17,11 +17,13 @@ type AdminRepo interface {
 	BulkCheckIn(ticketIDs []string) error
 	RecordLog(userID uint, action, targetID, details string)
 	CreateEventStock(req domain.CreateEventRequest) error
-	GetEventDetails(eventID uint) (*domain.EventDetail, error)
+	GetEventDetails(eventID uint) (*domain.EventDashboardData, error)
 	CreateCoupon(coupon *domain.Coupon) error
 	GetAllCoupons() ([]domain.Coupon, error)
 	UpdateCoupon(id string, updateData domain.Coupon) error
 	DeleteCoupon(id string) error
+	GetAllOrders() ([]domain.Order, error)
+	GetAdminOrderDetails(orderID string) (*domain.Order, error)
 }
 
 func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
@@ -347,5 +349,28 @@ func HandleDeleteCoupon(repo AdminRepo) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"message": "Coupon deleted"})
+	}
+}
+
+func HandleListOrders(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orders, err := repo.GetAllOrders()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to fetch orders"})
+			return
+		}
+		c.JSON(200, orders)
+	}
+}
+
+func HandleGetAdminOrderDetails(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		order, err := repo.GetAdminOrderDetails(id)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Order not found"})
+			return
+		}
+		c.JSON(200, order)
 	}
 }

@@ -298,6 +298,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		adminAuth.GET("/agent/search-customer", middleware.RolesRequired("agent", "admin"), HandleSearchCustomer(adminRepo))
 		adminAuth.GET("/admin/tickets/lookup", middleware.RolesRequired("agent", "admin"), HandleTicketLookup(adminRepo))
 		adminAuth.POST("/admin/tickets/bulk-checkin", middleware.RolesRequired("agent", "admin"), HandleBulkCheckin(adminRepo))
+		adminAuth.GET("/admin/orders", middleware.RolesRequired("agent", "admin"), HandleListOrders(adminRepo))
+		adminAuth.GET("/admin/orders/:id", middleware.RolesRequired("agent", "admin"), HandleGetAdminOrderDetails(adminRepo))
 
 		// Admin Only Routes
 		adminOnly := adminAuth.Group("/")

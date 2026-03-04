@@ -89,3 +89,13 @@ func (d *dbRepo) CleanupExpiredOrders(timeout time.Duration) (int64, error) {
 
 	return totalReleased, nil
 }
+
+func (d *dbRepo) GetAllOrders() ([]domain.Order, error) {
+	var orders []domain.Order
+	// Preload the User so we know who bought it!
+	err := d.db.Preload("User").
+		Order("created_at desc").
+		Limit(100).
+		Find(&orders).Error
+	return orders, err
+}

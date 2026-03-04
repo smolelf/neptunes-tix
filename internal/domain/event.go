@@ -41,12 +41,12 @@ type TicketTier struct {
 	Quantity int     `json:"quantity"`
 }
 
-type TierStats struct {
-	Category string  `json:"category"`
-	Price    float64 `json:"price"`
-	Stock    int     `json:"stock"`
-	Sold     int     `json:"sold"`
-}
+// type TierStats struct {
+// 	Category string  `json:"category"`
+// 	Price    float64 `json:"price"`
+// 	Stock    int     `json:"stock"`
+// 	Sold     int     `json:"sold"`
+// }
 
 // 2. The main response struct
 type EventDetail struct {
