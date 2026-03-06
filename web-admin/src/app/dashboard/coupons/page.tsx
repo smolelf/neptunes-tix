@@ -1,12 +1,13 @@
-// web-admin/src/app/dashboard/coupons/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/apiClient';
-import { Plus, Trash2, TicketPercent, Loader2 } from 'lucide-react';
+import { Plus, Trash2, TicketPercent, Loader2,
+  Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -23,6 +24,8 @@ interface Coupon {
   usage_limit: number;
   used_count: number;
   expiry_date: string;
+  is_active: boolean;
+  deleted_at?: any;
 }
 
 export default function CouponsPage() {
@@ -198,18 +201,34 @@ export default function CouponsPage() {
                             {coupon.used_count} / {coupon.usage_limit} used
                         </td>
                         <td className="px-6 py-4">
-                            {coupon.used_count >= coupon.usage_limit 
-                                ? <Badge variant="destructive">Depleted</Badge> 
-                                : <Badge className="bg-green-600">Active</Badge>
-                            }
+                            {(() => {
+                                const isDeleted = !!coupon.deleted_at;
+                                const isExpired = new Date(coupon.expiry_date) < new Date();
+                                const isDepleted = coupon.usage_limit > 0 && coupon.used_count >= coupon.usage_limit;
+                                const isPaused = coupon.is_active === false;
+
+                                if (isDeleted) {
+                                    return <Badge variant="destructive" className="bg-red-100 text-red-700 hover:bg-red-100 border-none">Deleted</Badge>;
+                                }
+                                if (isPaused) {
+                                    return <Badge variant="secondary" className="bg-gray-100 text-gray-700 hover:bg-gray-100 border-none">Paused</Badge>;
+                                }
+                                if (isExpired) {
+                                    return <Badge variant="destructive" className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-none">Expired</Badge>;
+                                }
+                                if (isDepleted) {
+                                    return <Badge variant="destructive" className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-none">Depleted</Badge>;
+                                }
+                                return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none">Active</Badge>;
+                            })()}
                         </td>
-                        <td className="px-6 py-4 text-right">
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => handleDelete(coupon.id)}
-                            >
+                        <td className="px-6 py-4 text-right flex justify-end gap-2">
+                            <Link href={`/dashboard/coupons/${coupon.id}/edit`}>
+                                <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700 hover:bg-blue-50">
+                                    <Edit className="w-4 h-4" />
+                                </Button>
+                            </Link>
+                            <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(coupon.id)}>
                                 <Trash2 className="w-4 h-4" />
                             </Button>
                         </td>

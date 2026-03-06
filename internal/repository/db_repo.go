@@ -316,8 +316,8 @@ func (d *dbRepo) CreateCoupon(coupon *domain.Coupon) error {
 
 func (d *dbRepo) GetAllCoupons() ([]domain.Coupon, error) {
 	var coupons []domain.Coupon
-	// Sort by newest first
-	err := d.db.Order("created_at desc").Find(&coupons).Error
+	// 🚀 Add Unscoped() here to fetch deleted records too!
+	err := d.db.Unscoped().Order("created_at desc").Find(&coupons).Error
 	return coupons, err
 }
 
@@ -328,6 +328,12 @@ func (d *dbRepo) UpdateCoupon(id string, updateData domain.Coupon) error {
 
 func (d *dbRepo) DeleteCoupon(id string) error {
 	return d.db.Delete(&domain.Coupon{}, "id = ?", id).Error
+}
+
+func (d *dbRepo) GetCouponByID(id string) (*domain.Coupon, error) {
+	var coupon domain.Coupon
+	err := d.db.First(&coupon, "id = ?", id).Error
+	return &coupon, err
 }
 
 // --- SCANNING ---

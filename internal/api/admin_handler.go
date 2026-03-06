@@ -20,6 +20,7 @@ type AdminRepo interface {
 	GetEventDetails(eventID uint) (*domain.EventDashboardData, error)
 	CreateCoupon(coupon *domain.Coupon) error
 	GetAllCoupons() ([]domain.Coupon, error)
+	GetCouponByID(id string) (*domain.Coupon, error)
 	UpdateCoupon(id string, updateData domain.Coupon) error
 	DeleteCoupon(id string) error
 	GetAllOrders() ([]domain.Order, error)
@@ -322,24 +323,6 @@ func HandleListCoupons(repo AdminRepo) gin.HandlerFunc {
 	}
 }
 
-// 3. Update Coupon
-func HandleUpdateCoupon(repo AdminRepo) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id := c.Param("id")
-		var updateData domain.Coupon
-		if err := c.ShouldBindJSON(&updateData); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-
-		if err := repo.UpdateCoupon(id, updateData); err != nil {
-			c.JSON(500, gin.H{"error": "Update failed"})
-			return
-		}
-		c.JSON(200, gin.H{"message": "Coupon updated"})
-	}
-}
-
 // 4. Delete Coupon
 func HandleDeleteCoupon(repo AdminRepo) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -349,6 +332,36 @@ func HandleDeleteCoupon(repo AdminRepo) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"message": "Coupon deleted"})
+	}
+}
+
+func HandleGetCoupon(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		coupon, err := repo.GetCouponByID(id)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Coupon not found"})
+			return
+		}
+		c.JSON(200, coupon)
+	}
+}
+
+// Save the edited coupon
+func HandleUpdateCoupon(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var input domain.Coupon
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := repo.UpdateCoupon(id, input); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to update coupon"})
+			return
+		}
+		c.JSON(200, gin.H{"message": "Coupon updated successfully"})
 	}
 }
 
