@@ -25,6 +25,8 @@ type AdminRepo interface {
 	DeleteCoupon(id string) error
 	GetAllOrders() ([]domain.Order, error)
 	GetAdminOrderDetails(orderID string) (*domain.Order, error)
+	UpdateUserRole(userID string, newRole string) error
+	GetUserOrdersAdmin(userID string) ([]domain.Order, error)
 }
 
 func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
@@ -385,5 +387,39 @@ func HandleGetAdminOrderDetails(repo AdminRepo) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, order)
+	}
+}
+
+func HandleUpdateUserRole(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+
+		var input struct {
+			Role string `json:"role" binding:"required,oneof=admin agent customer"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid role. Must be admin, agent, or customer."})
+			return
+		}
+
+		if err := repo.UpdateUserRole(id, input.Role); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to update user role"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "User role updated successfully"})
+	}
+}
+
+func HandleGetUserOrdersAdmin(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		orders, err := repo.GetUserOrdersAdmin(id)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to fetch order history"})
+			return
+		}
+		c.JSON(200, orders)
 	}
 }

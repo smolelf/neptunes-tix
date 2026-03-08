@@ -301,6 +301,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		adminAuth.GET("/admin/orders", middleware.RolesRequired("agent", "admin"), HandleListOrders(adminRepo))
 		adminAuth.GET("/admin/orders/:id", middleware.RolesRequired("agent", "admin"), HandleGetAdminOrderDetails(adminRepo))
 		adminAuth.GET("/admin/coupons/:id", middleware.RolesRequired("agent", "admin"), HandleGetCoupon(adminRepo))
+		adminAuth.GET("/admin/users/:id/orders", middleware.RolesRequired("agent", "admin"), HandleGetUserOrdersAdmin(adminRepo))
+
 		// Admin Only Routes
 		adminOnly := adminAuth.Group("/")
 		adminOnly.Use(middleware.AdminOnly())
@@ -309,6 +311,8 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
 			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
 			adminOnly.PUT("/admin/events/:id", HandleUpdateEvent(bookingSvc))
+
+			adminAuth.PUT("/admin/users/:id/role", HandleUpdateUserRole(adminRepo))
 
 			adminOnly.POST("/admin/coupons", HandleCreateCoupon(adminRepo))
 			adminOnly.GET("/admin/coupons", HandleListCoupons(adminRepo))

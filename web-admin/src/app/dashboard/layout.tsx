@@ -27,7 +27,7 @@ export default function DashboardLayout({
       {/* 🧭 STATIC SIDEBAR */}
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm">
         <div className="p-6 border-b border-gray-100">
-          <h2 className="text-2xl font-black text-blue-600 tracking-tighter">NEPTUNE'S<br/>TIX.</h2>
+          <h2 className="text-2xl font-black text-blue-600 tracking-tighter">NEPTUNES<br/>PRESENTS!</h2>
           <p className="text-xs text-gray-400 mt-1 font-bold tracking-widest uppercase">Admin Portal</p>
         </div>
         

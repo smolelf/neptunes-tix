@@ -56,6 +56,21 @@ func (d *dbRepo) SearchCustomerByName(name string) ([]domain.User, error) {
 	return users, err
 }
 
+func (d *dbRepo) UpdateUserRole(userID string, newRole string) error {
+	return d.db.Model(&domain.User{}).Where("id = ?", userID).Update("role", newRole).Error
+}
+
+func (d *dbRepo) GetUserOrdersAdmin(userID string) ([]domain.Order, error) {
+	var orders []domain.Order
+	// Preload the Tickets and the Event details for those tickets
+	err := d.db.Preload("Tickets").
+		Preload("Tickets.Event").
+		Where("user_id = ?", userID).
+		Order("created_at desc").
+		Find(&orders).Error
+	return orders, err
+}
+
 // --- TICKET CORE METHODS ---
 
 func (d *dbRepo) CreateTicket(ticket *domain.Ticket) error {

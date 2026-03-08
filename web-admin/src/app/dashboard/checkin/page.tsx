@@ -134,7 +134,7 @@ export default function ManualCheckInPage() {
                     onChange={() => toggleSelection(ticket.id)}
                   />
                   <div className="flex-1">
-                    <p className="font-bold text-gray-900">{ticket.Event?.name || 'Unknown Event'}</p>
+                    <p className="font-bold text-gray-900">{ticket.event?.name || 'Unknown Event'}</p>
                     <p className="text-sm text-gray-500">Tier: <span className="font-semibold text-gray-700">{ticket.category}</span></p>
                   </div>
                   <div className="text-right text-xs text-gray-400 font-mono">
