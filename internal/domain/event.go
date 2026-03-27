@@ -4,13 +4,15 @@ import "gorm.io/gorm"
 
 type Event struct {
 	gorm.Model
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Venue       string   `json:"venue"`
-	Date        string   `json:"date"`
-	LocationURL string   `json:"location_url"`
-	DoorsOpen   string   `json:"doors_open"`
-	Tickets     []Ticket `json:"-"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Venue       string       `json:"venue"`
+	Date        string       `json:"date"`
+	LocationURL string       `json:"location_url"`
+	DoorsOpen   string       `json:"doors_open"`
+	Tickets     []Ticket     `json:"-"`
+	BannerURL   string       `json:"banner_url"`
+	Images      []EventImage `json:"images" gorm:"foreignKey:EventID"`
 }
 
 type CreateEventRequest struct {
@@ -33,6 +35,13 @@ type UpdateEventRequest struct {
 	AddTiers    []TicketTier `json:"add_tiers"`    // New categories to create
 	AddStock    []TicketTier `json:"add_stock"`    // Add more tickets to existing category
 	RemoveTiers []string     `json:"remove_tiers"` // Categories to delete entirely
+}
+
+type EventImage struct {
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	EventID     uint   `json:"event_id"`
+	ImageURL    string `json:"image_url"`
+	Description string `json:"description"` // The text under the picture
 }
 
 type TicketTier struct {

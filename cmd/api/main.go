@@ -36,7 +36,7 @@ func main() {
 	db.AutoMigrate(
 		&domain.User{}, &domain.Ticket{}, &domain.Order{},
 		&domain.Event{}, &domain.AuditLog{}, &domain.PointTransaction{},
-		&domain.Coupon{},
+		&domain.Coupon{}, &domain.EventImage{},
 	)
 
 	repo := repository.NewDBRepo(db)

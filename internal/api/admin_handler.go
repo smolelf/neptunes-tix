@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"neptunes-tix/internal/domain"
 	"neptunes-tix/internal/service"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +31,8 @@ type AdminRepo interface {
 	GetAdminOrderDetails(orderID string) (*domain.Order, error)
 	UpdateUserRole(userID string, newRole string) error
 	GetUserOrdersAdmin(userID string) ([]domain.Order, error)
+	UpdateEventBanner(eventID uint, bannerURL string) error
+	AddEventGalleryImage(eventID uint, imageURL string) error
 }
 
 func HandleAdminStats(repo AdminRepo) gin.HandlerFunc {
@@ -421,5 +427,115 @@ func HandleGetUserOrdersAdmin(repo AdminRepo) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, orders)
+	}
+}
+
+func HandleUploadEventBanner(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+		var eventID uint
+		if _, err := fmt.Sscanf(idParam, "%d", &eventID); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid Event ID"})
+			return
+		}
+
+		// 1. Grab the file from the "multipart/form-data" request
+		// The string "banner" is the key we will use in Postman/Next.js
+		file, err := c.FormFile("banner")
+		if err != nil {
+			c.JSON(400, gin.H{"error": "No file uploaded."})
+			return
+		}
+
+		existingEvent, err := repo.GetEventDetails(eventID)
+		if err == nil && existingEvent.BannerURL != "" {
+			// The DB stores "/uploads/pic.jpg", but your computer needs "uploads/pic.jpg"
+			oldFilePath := strings.TrimPrefix(existingEvent.BannerURL, "/")
+
+			// Tell the operating system to delete the file!
+			// We ignore the error here just in case the file was already deleted manually
+			os.Remove(oldFilePath)
+		}
+
+		// 2. Generate a highly unique filename to prevent overwriting
+		// e.g., "1_1710000000_my_cool_poster.jpg"
+		filename := fmt.Sprintf("%d_%d_%s", eventID, time.Now().Unix(), file.Filename)
+		savePath := filepath.Join("uploads", filename)
+
+		// 4. Save the file to your computer's hard drive!
+		if err := c.SaveUploadedFile(file, savePath); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to save file to server"})
+			return
+		}
+
+		// 5. Update the Database with the URL string
+		// We add a leading slash so the frontend knows it's an absolute path
+		bannerURL := "/uploads/" + filename
+
+		if err := repo.UpdateEventBanner(eventID, bannerURL); err != nil {
+			c.JSON(500, gin.H{"error": "File saved, but failed to update database"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message":    "Banner uploaded successfully!",
+			"banner_url": bannerURL,
+		})
+	}
+}
+
+func HandleUploadEventGallery(repo AdminRepo) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+		var eventID uint
+		if _, err := fmt.Sscanf(idParam, "%d", &eventID); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid Event ID"})
+			return
+		}
+
+		// 1. Parse the incoming multi-part form
+		form, err := c.MultipartForm()
+		if err != nil {
+			c.JSON(400, gin.H{"error": "Failed to parse form data"})
+			return
+		}
+
+		// 2. Grab the array of files attached to the "gallery" key
+		files := form.File["gallery"]
+		if len(files) == 0 {
+			c.JSON(400, gin.H{"error": "No files uploaded under the 'gallery' key"})
+			return
+		}
+
+		var uploadedURLs []string
+
+		// 3. Loop through every single file they uploaded
+		for _, file := range files {
+			// Generate a unique filename: eventID_timestamp_originalName
+			filename := fmt.Sprintf("%d_%d_%s", eventID, time.Now().UnixNano(), file.Filename)
+			savePath := filepath.Join("uploads", filename)
+
+			// Save to computer hard drive
+			if err := c.SaveUploadedFile(file, savePath); err != nil {
+				// If one fails, we log it but keep trying the others
+				fmt.Println("Failed to save file:", err)
+				continue
+			}
+
+			// Save the URL to the PostgreSQL database
+			imageURL := "/uploads/" + filename
+			if err := repo.AddEventGalleryImage(eventID, imageURL); err != nil {
+				fmt.Println("Failed to save to DB:", err)
+				continue
+			}
+
+			// Keep track of successes to send back to the frontend
+			uploadedURLs = append(uploadedURLs, imageURL)
+		}
+
+		c.JSON(200, gin.H{
+			"message": fmt.Sprintf("Successfully uploaded %d images", len(uploadedURLs)),
+			"urls":    uploadedURLs,
+		})
 	}
 }

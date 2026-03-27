@@ -14,12 +14,10 @@ import (
 // SetupRoutes wires up all the HTTP endpoints
 func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService) {
 
-	// 1. Cast rawRepo so the Admin Handlers can use it
 	adminRepo := rawRepo.(AdminRepo)
-
-	// 2. Cast rawRepo so the inline Public/User routes can use it
-	// (Assuming TicketRepository is your "Super Interface" that has everything)
 	repo := rawRepo.(domain.TicketRepository)
+
+	r.Static("/uploads", "./uploads")
 
 	// --- 🔓 PUBLIC ROUTES ---
 	r.POST("/login", func(c *gin.Context) {
@@ -117,6 +115,20 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 			return
 		}
 		c.Writer.Write([]byte(fmt.Sprintf("<h1>Payment Successful!</h1><p>Method: %s</p><p>Ref: %s</p><p>You can close this window and return to the app.</p>", method, invoiceRef)))
+	})
+
+	r.GET("/events/:id", func(c *gin.Context) {
+		idParam := c.Param("id")
+		var eventID uint
+		fmt.Sscanf(idParam, "%d", &eventID)
+
+		// We can reuse the exact same database query your Admin portal uses!
+		eventDetails, err := adminRepo.GetEventDetails(eventID)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "Event not found"})
+			return
+		}
+		c.JSON(200, eventDetails)
 	})
 
 	//BILLPLZ SIGNATURE ADD
@@ -311,8 +323,10 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
 			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
 			adminOnly.PUT("/admin/events/:id", HandleUpdateEvent(bookingSvc))
+			adminOnly.POST("/admin/events/:id/banner", HandleUploadEventBanner(adminRepo))
+			adminOnly.POST("/admin/events/:id/gallery", HandleUploadEventGallery(adminRepo))
 
-			adminAuth.PUT("/admin/users/:id/role", HandleUpdateUserRole(adminRepo))
+			adminOnly.PUT("/admin/users/:id/role", HandleUpdateUserRole(adminRepo))
 
 			adminOnly.POST("/admin/coupons", HandleCreateCoupon(adminRepo))
 			adminOnly.GET("/admin/coupons", HandleListCoupons(adminRepo))

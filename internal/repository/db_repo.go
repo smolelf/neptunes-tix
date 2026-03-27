@@ -141,7 +141,7 @@ func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDashboardData, erro
 
 	// 1. Fetch Basic Event Info
 	var event domain.Event
-	if err := d.db.First(&event, eventID).Error; err != nil {
+	if err := d.db.Preload("Images").First(&event, eventID).Error; err != nil {
 		return nil, err
 	}
 
@@ -177,7 +177,14 @@ func (d *dbRepo) GetEventDetails(eventID uint) (*domain.EventDashboardData, erro
 		Event:        event,
 		TierStats:    tiers,
 		TotalRevenue: totalRev,
+		BannerURL:    event.BannerURL,
 	}, nil
+}
+
+func (d *dbRepo) UpdateEventBanner(eventID uint, bannerURL string) error {
+	return d.db.Model(&domain.Event{}).
+		Where("id = ?", eventID).
+		Update("banner_url", bannerURL).Error
 }
 
 // --- MARKETPLACE & BOOKING ---
@@ -188,16 +195,23 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 		EventName  string
 		EventVenue string
 		EventDate  string
+		DoorsOpen  string
 		Category   string
 		Price      float64
 		Stock      int
+		BannerURL  string
 	}
 
 	query := d.db.Table("tickets").
-		Select("tickets.event_id, events.name as event_name, events.venue as event_venue, events.date as event_date, tickets.category, tickets.price, COUNT(*) AS stock").
+		Select(`tickets.event_id, events.name as event_name,
+		events.venue as event_venue, events.date as event_date,
+		tickets.category, tickets.price, COUNT(*) AS stock,
+		events.banner_url as banner_url, events.doors_open as doors_open`).
 		Joins("JOIN events ON events.id = tickets.event_id").
 		Where("tickets.is_sold = ? AND tickets.order_id IS NULL AND tickets.deleted_at IS NULL", false).
-		Group("tickets.event_id, events.name, events.venue, events.date, tickets.category, tickets.price")
+		Group(`tickets.event_id, events.name,
+		events.venue, events.date, tickets.category, tickets.price,
+		events.banner_url, events.doors_open`)
 
 	if search != "" {
 		query = query.Where("events.name ILIKE ?", "%"+search+"%")
@@ -218,9 +232,11 @@ func (d *dbRepo) GetMarketplace(search string) ([]domain.Ticket, error) {
 			Price:    r.Price,
 			Stock:    r.Stock,
 			Event: domain.Event{
-				Name:  r.EventName,
-				Venue: r.EventVenue,
-				Date:  r.EventDate,
+				Name:      r.EventName,
+				Venue:     r.EventVenue,
+				Date:      r.EventDate,
+				BannerURL: r.BannerURL,
+				DoorsOpen: r.DoorsOpen,
 			},
 		})
 	}
@@ -492,4 +508,12 @@ func (d *dbRepo) GetAdminOrderDetails(orderID string) (*domain.Order, error) {
 		Preload("Tickets.Event").
 		First(&order, "id = ?", orderID).Error
 	return &order, err
+}
+
+func (d *dbRepo) AddEventGalleryImage(eventID uint, imageURL string) error {
+	image := domain.EventImage{
+		EventID:  eventID,
+		ImageURL: imageURL,
+	}
+	return d.db.Create(&image).Error
 }

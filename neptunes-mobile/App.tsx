@@ -25,6 +25,7 @@ import SignupScreen from './src/screens/SignupScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
 import EditEventScreen from './src/screens/EditEventScreen';
 import ManageCouponsScreen from './src/screens/ManageCouponScreen';
+import EventDetailScreen from './src/screens/EventDetailScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -173,6 +174,11 @@ function AppNavigator() {
           name="OrderDetails" 
           component={OrderDetailsScreen} 
           options={{ title: 'Your Tickets', }} 
+        />
+        <Stack.Screen 
+            name="EventDetail" 
+            component={EventDetailScreen} 
+            options={{ headerShown: false }} // We hide the header because we built a custom back button!
         />
         <Stack.Screen 
           name="AdminDashboard" 

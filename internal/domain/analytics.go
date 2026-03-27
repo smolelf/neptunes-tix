@@ -27,4 +27,5 @@ type EventDashboardData struct {
 	Event        Event       `json:"event"`
 	TierStats    []TierStats `json:"tier_stats"`
 	TotalRevenue float64     `json:"total_revenue"`
+	BannerURL    string      `json:"banner_url"`
 }
