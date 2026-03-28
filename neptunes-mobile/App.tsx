@@ -54,82 +54,81 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 function MainTabs() {
   const { colors, isDark } = useContext(ThemeContext);
   const { user } = useContext(AuthContext);
-  const navigation = useNavigation<any>();
-
-  const displayName = user?.name || user?.email?.split('@')[0] || 'Guest';
   
   return (
     <Tab.Navigator 
       screenOptions={({ route }) => ({ 
-        headerShown: true,
+        // 🚀 We hide the native header because our screens have gorgeous custom ones!
+        headerShown: false,
+        
+        // 🚀 Premium Bottom Tab Styling
         tabBarStyle: { 
-          display: user ? 'flex' : 'none', 
-          backgroundColor: colors.background,
-          borderTopColor: isDark ? '#333' : '#eee',
+          backgroundColor: colors.card,
+          borderTopWidth: 0,
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: isDark ? 0.3 : 0.05,
+          shadowRadius: 8,
+          height: Platform.OS === 'ios' ? 85 : 65,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+          paddingTop: 10,
         },
-        headerStyle: { 
-          backgroundColor: colors.background,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-        headerTintColor: colors.text,
         tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: 'gray',
+        tabBarInactiveTintColor: isDark ? '#8E8E93' : '#A2A2A2',
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
+        },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'help-outline';
-          if (route.name === 'Marketplace') iconName = focused ? 'cart' : 'cart-outline';
-          else if (route.name === 'Wallet') iconName = focused ? 'wallet' : 'wallet-outline';
-          else if (route.name === 'Scanner') iconName = focused ? 'scan' : 'scan-outline';
+          if (route.name === 'Marketplace') iconName = focused ? 'compass' : 'compass-outline';
+          else if (route.name === 'Wallet') iconName = focused ? 'ticket' : 'ticket-outline';
+          else if (route.name === 'Scanner') iconName = focused ? 'scan-circle' : 'scan-circle-outline';
           else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Ionicons name={iconName} size={size + 2} color={color} />;
         },
       })}
     >
       <Tab.Screen 
         name="Marketplace" 
         component={TicketListScreen} 
-        options={{
-          headerTitle: () => (
-            <View style={{ marginLeft: Platform.OS === 'ios' ? 0 : -10 }}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
-                {user ? `Welcome, ${displayName}! 👋` : "Neptunes Tix"}
-              </Text>
-            </View>
-          ),
-          headerRight: () => !user && (
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('Login')}
-              style={{
-                marginRight: 15,
-                backgroundColor: '#007AFF',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>Sign In</Text>
-            </TouchableOpacity>
-          )
-        }}
+        options={{ tabBarLabel: 'Discover' }}
       />
       
+      {/* 🚀 Only show Wallet and Scanner to logged in users */}
       {user && (
-        <>
-          <Tab.Screen name="Wallet" component={MyTicketsScreen} options={{}}/>
-          {(user?.role === 'agent' || user?.role === 'admin') && (
-            <Tab.Screen name="Scanner" component={ScannerScreen} options={{ headerShown: false }}/>
-          )}
-          <Tab.Screen name="Profile" component={ProfileScreen} options={{}}/>
-        </>
+        <Tab.Screen 
+            name="Wallet" 
+            component={MyTicketsScreen} 
+            options={{ tabBarLabel: 'My Tickets' }}
+        />
       )}
+
+      {(user?.role === 'agent' || user?.role === 'admin') && (
+        <Tab.Screen 
+            name="Scanner" 
+            component={ScannerScreen} 
+            options={{ tabBarLabel: 'Scan' }}
+        />
+      )}
+
+      {/* 🚀 Show Profile to EVERYONE so guests can see the Login prompt */}
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen} 
+        options={{ tabBarLabel: 'Profile' }}
+      />
+      
     </Tab.Navigator>
   );
 }
 
 function AppNavigator() {
   const { colors, isDark } = useContext(ThemeContext);
-  const { user, loading } = useContext(AuthContext);
+  const { loading } = useContext(AuthContext);
 
   if (loading) return null; 
 
@@ -139,9 +138,9 @@ function AppNavigator() {
       ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
       primary: '#007AFF',
       background: colors.background,
-      card: colors.background,
+      card: colors.card,
       text: colors.text,
-      border: isDark ? '#333' : '#eee',
+      border: isDark ? '#333' : '#E5E5EA',
     },
   };
 
@@ -151,8 +150,17 @@ function AppNavigator() {
         initialRouteName="Home"
         screenOptions={{
           headerBackTitleVisible: false,
-          headerTintColor: '#007AFF',    // Ensures the arrow is clearly visible and clickable
-          headerTitleStyle: { color: colors.text }, // Adjusts text for dark mode
+          headerTintColor: '#007AFF', 
+          headerTitleStyle: { 
+            color: colors.text,
+            fontWeight: '700', 
+            fontSize: 17 
+          },
+          // 🚀 Flat headers for sub-screens (removes the ugly line underneath)
+          headerShadowVisible: false,
+          headerStyle: {
+            backgroundColor: colors.background,
+          }
         }}
       >
         <Stack.Screen 
@@ -160,61 +168,61 @@ function AppNavigator() {
           component={MainTabs} 
           options={{ headerShown: false }} 
         />
+        
+        {/* Full Screen Auth Modals */}
         <Stack.Screen 
           name="Login" 
           component={LoginScreen} 
-          options={{ headerShown: false, }} 
+          options={{ headerShown: false, presentation: 'fullScreenModal' }} 
         />
         <Stack.Screen 
           name="Signup" 
           component={SignupScreen} 
-          options={{ headerShown: false, }} 
+          options={{ headerShown: false, presentation: 'fullScreenModal' }} 
         />
+        
+        {/* Core Modals */}
         <Stack.Screen 
-          name="OrderDetails" 
-          component={OrderDetailsScreen} 
-          options={{ title: 'Your Tickets', }} 
+            name="OrderDetails" 
+            component={OrderDetailsScreen} 
+            options={{ headerShown: false, presentation: 'modal' }}
         />
         <Stack.Screen 
             name="EventDetail" 
             component={EventDetailScreen} 
-            options={{ headerShown: false }} // We hide the header because we built a custom back button!
+            options={{ headerShown: false }} 
         />
+        
+        {/* Management & Profile Stacks (These USE the native header) */}
         <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboardScreen} 
-          options={{ title: 'Event Analytics', }} 
+          options={{ title: 'Dashboard' }} 
         />
         <Stack.Screen 
           name="CreateEvent" 
           component={CreateEventScreen} 
-          options={{ title: 'Launch New Event', }} 
+          options={{ title: 'Launch New Event' }} 
         />
         <Stack.Screen 
           name="PointsHistory" 
           component={PointsHistoryScreen} 
-          options={{ title: 'Points History', }} 
+          options={{ title: 'Points History' }} 
         />
         <Stack.Screen
           name="EditProfile"
           component={EditProfileScreen}
-          options={{
-            title: 'Edit Profile',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Edit Profile', presentation: 'modal' }}
         />
         <Stack.Screen 
           name="EditEvent" 
           component={EditEventScreen} 
-          options={{
-            title: 'Edit Event',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Edit Event', presentation: 'modal' }}
         />
         <Stack.Screen 
           name="ManageCoupons" 
           component={ManageCouponsScreen} 
-          options={{ title: 'Manage Coupons', }} 
+          options={{ title: 'Manage Coupons' }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

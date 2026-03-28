@@ -1,5 +1,5 @@
 import React, { useState, useRef, useContext, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Dimensions, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Dimensions, FlatList, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,8 +7,6 @@ import { ThemeContext } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import apiClient from '../api/client';
 import * as Haptics from 'expo-haptics';
-import { Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
 
 const { width } = Dimensions.get('window');
 
@@ -91,18 +89,20 @@ export default function ScannerScreen() {
                   data={stats.events}
                   keyExtractor={(item) => item.event_id.toString()}
                   contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+                  showsVerticalScrollIndicator={false}
                   renderItem={({ item }) => (
                       <TouchableOpacity 
                           style={[styles.eventCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                           onPress={() => setSelectedEvent(item)}
+                          activeOpacity={0.8}
                       >
                           <View style={{ flex: 1 }}>
-                              <Text style={[styles.eventCardTitle, { color: colors.text }]}>{item.event_name}</Text>
+                              <Text style={[styles.eventCardTitle, { color: colors.text }]} numberOfLines={1}>{item.event_name}</Text>
                               <Text style={[styles.eventCardSub, { color: colors.subText }]}>
                                   {item.scanned} / {item.sold} Checked In
                               </Text>
-                              {/* 🚀 Sleek Mini Progress Bar on the list view! */}
-                              <View style={styles.miniProgressBar}>
+                              {/* Sleek Mini Progress Bar */}
+                              <View style={[styles.miniProgressBar, { backgroundColor: colors.border }]}>
                                   <View style={[styles.miniProgressFill, { 
                                       width: `${item.sold > 0 ? (item.scanned / item.sold) * 100 : 0}%`,
                                       backgroundColor: item.scanned >= item.sold && item.sold > 0 ? '#28a745' : '#007AFF'
@@ -140,6 +140,7 @@ export default function ScannerScreen() {
   const handleBarCodeScanned = async ({ data, bounds }: any) => {
     if (scanLock.current || !data) return;
 
+    // Boundary check for precision
     if (bounds) {
       const { y: qrY, x: qrX } = bounds.origin;
       const boxTop = 100 + insets.top;
@@ -263,9 +264,9 @@ export default function ScannerScreen() {
           </View>
         ) : (
           <View style={styles.idleState}>
-            <TouchableOpacity style={[styles.backToEventsBtn, { top: insets.top + 10 }]} onPress={() => setSelectedEvent(null)}>
-                <Ionicons name="chevron-back" size={20} color="#007AFF" />
-                <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>Change Event</Text>
+            
+            <TouchableOpacity style={[styles.backToEventsBtn, { top: insets.top + 15 }]} onPress={() => setSelectedEvent(null)}>
+                <Ionicons name="chevron-back" size={24} color={colors.text} />
             </TouchableOpacity>
 
             {loading ? (
@@ -279,14 +280,18 @@ export default function ScannerScreen() {
                   <Ionicons name="scan" size={50} color="#007AFF" />
                 </View>
 
-                <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-                  <Text style={[styles.statLabel, { color: colors.subText, fontSize: 14, marginBottom: 5 }]}>{selectedEvent.event_name.toUpperCase()}</Text>
+                {/* 🚀 Polished Dashboard Stat Card */}
+                <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.statEventName, { color: colors.text }]}>{selectedEvent.event_name.toUpperCase()}</Text>
+                  
+                  <View style={styles.divider} />
+                  
                   <Text style={[styles.statLabel, { color: colors.subText }]}>GATE CAPACITY</Text>
                   <Text style={[styles.statValue, { color: colors.text }]}>
                     {selectedEvent.scanned} / {selectedEvent.sold}
                   </Text>
                   
-                  <View style={styles.progressBar}>
+                  <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
                     <View style={[styles.progressFill, { 
                         width: `${selectedEvent.sold > 0 ? (selectedEvent.scanned / selectedEvent.sold) * 100 : 0}%`,
                         backgroundColor: selectedEvent.scanned >= selectedEvent.sold && selectedEvent.sold > 0 ? '#28a745' : '#007AFF'
@@ -305,11 +310,15 @@ export default function ScannerScreen() {
           </View>
         )}
 
-        {/* Manual Modal */}
-        <Modal visible={manualModalVisible} animationType="fade" transparent={true} onRequestClose={() => setManualModalVisible(false)}>
+        {/* 🚀 Polished Manual Lookup Modal */}
+        <Modal visible={manualModalVisible} animationType="slide" transparent={true} onRequestClose={() => setManualModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card, height: '70%' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Lookup for {selectedEvent.event_name}</Text>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, height: '80%' }]}>
+              
+              {/* Added Drag Handle for consistency */}
+              <View style={[styles.modalDragHandle, { backgroundColor: colors.border }]} />
+              
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Lookup Guest</Text>
               
               <View style={styles.searchContainer}>
                 <TextInput
@@ -326,28 +335,38 @@ export default function ScannerScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={{ width: '100%', marginTop: 20 }}>
-                {foundTickets.map((ticket) => (
-                  <TouchableOpacity 
-                    key={ticket.id} 
-                    style={[styles.ticketSelectItem, { backgroundColor: selectedTickets.includes(ticket.id) ? 'rgba(0,122,255,0.1)' : 'transparent' }]}
-                    onPress={() => toggleTicketSelection(ticket.id)}
-                  >
-                    <View>
-                      <Text style={{ color: colors.text, fontWeight: 'bold' }}>{ticket.category}</Text>
-                      <Text style={{ color: colors.subText, fontSize: 12 }}>{ticket.event?.name}</Text>
-                    </View>
-                    <Ionicons 
-                      name={selectedTickets.includes(ticket.id) ? "checkbox" : "square-outline"} 
-                      size={24} 
-                      color={selectedTickets.includes(ticket.id) ? "#007AFF" : colors.subText} 
-                    />
-                  </TouchableOpacity>
-                ))}
+              <ScrollView style={{ width: '100%', marginTop: 20 }} showsVerticalScrollIndicator={false}>
+                {foundTickets.map((ticket) => {
+                  const isSelected = selectedTickets.includes(ticket.id);
+                  return (
+                      <TouchableOpacity 
+                        key={ticket.id} 
+                        style={[
+                            styles.ticketSelectItem, 
+                            { 
+                                backgroundColor: isSelected ? 'rgba(0,122,255,0.08)' : colors.background,
+                                borderColor: isSelected ? '#007AFF' : colors.border 
+                            }
+                        ]}
+                        onPress={() => toggleTicketSelection(ticket.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View>
+                          <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 16 }}>{ticket.category}</Text>
+                          <Text style={{ color: colors.subText, fontSize: 13, marginTop: 2 }}>{ticket.event?.name}</Text>
+                        </View>
+                        <Ionicons 
+                          name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                          size={26} 
+                          color={isSelected ? "#007AFF" : colors.subText} 
+                        />
+                      </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
 
               <View style={[styles.modalButtons, { marginTop: 20 }]}>
-                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.border }]} onPress={() => {
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]} onPress={() => {
                   setManualModalVisible(false);
                   setFoundTickets([]);
                   setEmailSearch('');
@@ -371,19 +390,19 @@ export default function ScannerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   
-  // 🚀 New Styles for the Beautiful Event Selection Menu
-  headerContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  // Event Selector Menu
+  headerContainer: { paddingHorizontal: 20, paddingTop: 5, paddingBottom: 20 },
   mainHeader: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5, marginBottom: 5 },
   subHeader: { fontSize: 15 },
   eventCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 16, marginBottom: 14, borderWidth: 1, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
   eventCardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
   eventCardSub: { fontSize: 13, marginBottom: 12 },
   chevronCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
-  miniProgressBar: { height: 6, backgroundColor: '#e0e0e0', borderRadius: 3, width: '85%', overflow: 'hidden' },
+  miniProgressBar: { height: 6, borderRadius: 3, width: '85%', overflow: 'hidden' },
   miniProgressFill: { height: '100%' },
   emptyContainer: { alignItems: 'center', marginTop: 80 },
 
-  // Existing Scanner Styles
+  // Scanner UI
   topUi: { flex: 1, alignItems: 'center' },
   targetSquare: { width: 250, height: 250, position: 'relative' },
   corner: { position: 'absolute', width: 45, height: 45, borderColor: '#007AFF', borderWidth: 5 },
@@ -395,30 +414,41 @@ const styles = StyleSheet.create({
   bottomUi: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', gap: 10 },  
   cancelButton: { backgroundColor: 'rgba(255, 59, 48, 0.8)', paddingVertical: 12, paddingHorizontal: 40, borderRadius: 25 },
   cancelText: { color: 'white', fontWeight: 'bold' },
+  
+  // Idle Dashboard State
   idleState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
+  backToEventsBtn: { position: 'absolute', left: 20, zIndex: 10, width: 40, height: 40, justifyContent: 'center' },
   welcomeCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
-  statCard: { width: '100%', padding: 25, borderRadius: 20, marginBottom: 30, alignItems: 'center', elevation: 3 },
-  statLabel: { fontSize: 12, fontWeight: 'bold', letterSpacing: 1.2, marginBottom: 10, textAlign: 'center' },
-  statValue: { fontSize: 36, fontWeight: 'bold', marginBottom: 15 },
-  progressBar: { width: '100%', height: 10, backgroundColor: '#e0e0e0', borderRadius: 5, overflow: 'hidden' },
+  
+  statCard: { width: '100%', padding: 25, borderRadius: 20, marginBottom: 30, alignItems: 'center', borderWidth: 1, elevation: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  statEventName: { fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  divider: { width: '100%', height: 1, backgroundColor: 'rgba(128,128,128,0.2)', marginVertical: 15 },
+  statLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 1.2, marginBottom: 10, textAlign: 'center' },
+  statValue: { fontSize: 36, fontWeight: '900', marginBottom: 15 },
+  progressBar: { width: '100%', height: 10, borderRadius: 5, overflow: 'hidden' },
   progressFill: { height: '100%' },
-  percentageText: { marginTop: 10, fontSize: 14, color: '#666' },
+  percentageText: { marginTop: 10, fontSize: 14, color: '#666', fontWeight: '500' },
+  
   startButton: { backgroundColor: '#007AFF', paddingVertical: 18, width: '100%', borderRadius: 15, alignItems: 'center' },
   buttonText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
   loadingBox: { alignItems: 'center' },
-  loadingText: { marginTop: 15, fontSize: 16 },
+  loadingText: { marginTop: 15, fontSize: 16, fontWeight: '600' },
   torchButton: { position: 'absolute', right: 20, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.5)', width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
+  
+  // Modal Styles
   manualEntryBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20 },
   manualEntryText: { color: 'white', marginLeft: 8, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { padding: 30, borderTopLeftRadius: 25, borderTopRightRadius: 25, alignItems: 'center' },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  modalContent: { padding: 30, paddingTop: 15, borderTopLeftRadius: 30, borderTopRightRadius: 30, alignItems: 'center' },
+  modalDragHandle: { width: 40, height: 5, borderRadius: 3, marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   manualInput: { width: '100%', height: 55, borderWidth: 1, borderRadius: 12, paddingHorizontal: 15, fontSize: 16, marginBottom: 20 },
+  
   modalButtons: { flexDirection: 'row', gap: 15 },
   modalBtn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: 12, flex: 1, alignItems: 'center' },
-  btnText: { color: 'white', fontWeight: 'bold' },
+  btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  
   searchContainer: { flexDirection: 'row', width: '100%', gap: 10, alignItems: 'center' },
-  searchIconBtn: { padding: 10, borderRadius: 10, backgroundColor: 'rgba(0,122,255,0.1)' },
-  ticketSelectItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  backToEventsBtn: { position: 'absolute', left: 20, flexDirection: 'row', alignItems: 'center', zIndex: 10 },
+  searchIconBtn: { padding: 15, borderRadius: 12, backgroundColor: 'rgba(0,122,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  ticketSelectItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderRadius: 12, marginBottom: 10, borderWidth: 1 },
 });

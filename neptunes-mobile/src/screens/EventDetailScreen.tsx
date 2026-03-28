@@ -8,12 +8,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
 import { AuthContext } from '../context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
-import apiClient from '../api/client';
+import apiClient, { SERVER_BASE_URL } from '../api/client';
 import * as WebBrowser from 'expo-web-browser';
 import Slider from '@react-native-community/slider';
 
 const { width } = Dimensions.get('window');
-const SERVER_BASE_URL = 'http://192.168.1.100:8080';
 
 export default function EventDetailScreen() {
     const navigation = useNavigation<any>();

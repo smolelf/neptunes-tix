@@ -2,10 +2,10 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 // IMPORTANT: Replace this with your computer's LOCAL IP (e.g., 192.168.1.5)
-const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
+export const SERVER_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 
 const apiClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: SERVER_BASE_URL,
   timeout: 5000, // 5 seconds
 });
 

@@ -1,286 +1,243 @@
-import React, { useEffect, useState, useContext, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useContext, useCallback, useMemo } from 'react';
 import { 
-  View, Text, FlatList, StyleSheet, ActivityIndicator, 
-  TouchableOpacity, Dimensions 
+    View, Text, FlatList, StyleSheet, TouchableOpacity, 
+    ActivityIndicator, Image, RefreshControl, Platform 
 } from 'react-native';
-import apiClient from '../api/client';
-import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../context/AuthContext';
-import { ThemeContext } from '../context/ThemeContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ThemeContext } from '../context/ThemeContext';
+import { AuthContext } from '../context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
+import apiClient, { SERVER_BASE_URL } from '../api/client';import { Ionicons } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
+export default function MyTicketScreen() {
+    const navigation = useNavigation<any>();
+    const { colors } = useContext(ThemeContext);
+    const { user } = useContext(AuthContext);
 
-const TICKET_CACHE_KEY = '@cached_my_orders';
+    const [rawTickets, setRawTickets] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-interface Ticket {
-  id: string; 
-  category: string;
-  event: {
-    name: string;
-    venue: string;
-    date: string;
-  };
-}
-  
-interface Order {
-    id: number;
-    created_at: string;
-    tickets: Ticket[]; 
-    total_amount: number;
-    status: string;
-    payment_url: string;
-}
+    const fetchMyTickets = async (showLoading = true) => {
+        if (!user) return;
+        if (showLoading) setLoading(true);
+        
+        try {
+            const token = await SecureStore.getItemAsync('userToken');
+            const response = await apiClient.get('/my-tickets', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setRawTickets(response.data || []);
+        } catch (error) {
+            console.error("Failed to fetch my tickets", error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
 
-export default function MyTicketsScreen() {
-  const { colors, isDark } = useContext(ThemeContext);
-  const { user } = useContext(AuthContext);
-  const navigation = useNavigation<any>();
-
-  const [myOrders, setMyOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
-
-  const lastFetchTime = useRef<number>(0);
-  const THROTTLE_MS = 30000; // 30 seconds
-
-  const fetchMyOrders = async (showLoading = true) => {
-      if (!user) {
-          setLoading(false);
-          return;
-      }
-
-      // 1. FAST LOAD: Check local cache first
-      try {
-          const cachedData = await AsyncStorage.getItem(TICKET_CACHE_KEY);
-          if (cachedData !== null) {
-              setMyOrders(JSON.parse(cachedData)); // Show tickets instantly
-          }
-      } catch (e) {
-          console.error("Failed to load cache", e);
-      }
-
-      // 2. BACKGROUND SYNC: Try to fetch fresh data from Go Backend
-      try {
-          if (showLoading && myOrders.length === 0) setLoading(true);
-          
-          const token = await SecureStore.getItemAsync('userToken');
-          const response = await apiClient.get<Order[]>('/my-orders', {
-              headers: { Authorization: `Bearer ${token}` }
-          });
-
-          const freshOrders = response.data || [];
-          setMyOrders(freshOrders); // Update UI with fresh data
-          setIsOffline(false);      // We have internet!
-
-          // 3. OVERWRITE CACHE: Save the fresh tickets for next time
-          await AsyncStorage.setItem(TICKET_CACHE_KEY, JSON.stringify(freshOrders));
-
-      } catch (error) {
-          // 4. OFFLINE FALLBACK: The API failed (no internet)
-          console.log("Network failed, relying on cache.");
-          setIsOffline(true); 
-      } finally {
-          setLoading(false);
-          setRefreshing(false);
-          lastFetchTime.current = Date.now();
-      }
-  };
-
-  // 🚀 ALL HOOKS MUST BE CALLED BEFORE ANY 'IF' RETURNS
-  useFocusEffect(
-    useCallback(() => {
-      const now = Date.now();
-      if (now - lastFetchTime.current > THROTTLE_MS) {
-        fetchMyOrders(false); // Silent refresh
-      }
-    }, [user]) // Re-run if user context changes
-  );
-
-  useEffect(() => {
-    fetchMyOrders();
-  }, [user]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchMyOrders();
-  };
-
-  // --- EARLY RETURNS (Render Logic) ---
-
-  if (!user) {
-    return (
-      <View style={[styles.container, styles.emptyContainer, { backgroundColor: colors.background }]}>
-        <Ionicons name="lock-closed-outline" size={80} color={colors.subText} />
-        <Text style={[styles.emptyTitle, { color: colors.text }]}>Member Feature</Text>
-        <Text style={[styles.emptySub, { color: colors.subText }]}>
-          Sign in to view your tickets and order history.
-        </Text>
-        <TouchableOpacity 
-            style={[styles.marketBtn, { backgroundColor: '#007AFF', borderColor: '#007AFF' }]}
-            onPress={() => navigation.navigate('Login')}
-        >
-            <Text style={[styles.marketBtnText, { color: '#fff' }]}>Sign In Now</Text>
-        </TouchableOpacity>
-      </View>
+    useFocusEffect(
+        useCallback(() => {
+            fetchMyTickets();
+        }, [user])
     );
-  }
 
-  // Only show giant loader if we have NO cache and are fetching for the first time
-  if (loading && !refreshing && myOrders.length === 0) {
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchMyTickets(false);
+    };
+
+    // 🚀 NEW: Group the raw tickets by Order ID
+    const groupedOrders = useMemo(() => {
+        const groups: Record<number, any> = {};
+        
+        rawTickets.forEach(t => {
+            const orderId = t.order_id;
+            if (!groups[orderId]) {
+                groups[orderId] = {
+                    order_id: orderId,
+                    event: t.Event || t.event, // Assuming all tickets in an order belong to the same event
+                    tickets: [],
+                    total_quantity: 0,
+                    // We check if ALL tickets in this order are used
+                    all_used: true 
+                };
+            }
+            groups[orderId].tickets.push(t);
+            groups[orderId].total_quantity += 1;
+            
+            // If even one ticket is unused, the whole order is not "all_used"
+            const isTicketUsed = t.is_scanned || t.status === 'used';
+            if (!isTicketUsed) {
+                groups[orderId].all_used = false;
+            }
+        });
+
+        // Convert to array and sort by Order ID descending (newest first)
+        return Object.values(groups).sort((a: any, b: any) => b.order_id - a.order_id);
+    }, [rawTickets]);
+
+    const formatTicketDate = (dateString: string) => {
+        if (!dateString || dateString === 'TBA') return 'Date TBA';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-MY', { 
+            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' 
+        });
+    };
+
+    if (loading && !refreshing) {
+        return (
+            <View style={[styles.center, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color="#007AFF" />
+            </View>
+        );
+    }
+
+    if (!user) {
+        return (
+            <View style={[styles.center, { backgroundColor: colors.background }]}>
+                <Ionicons name="ticket-outline" size={64} color={colors.subText} style={{ marginBottom: 15 }} />
+                <Text style={[styles.emptyText, { color: colors.text }]}>Please log in to view your tickets</Text>
+                <TouchableOpacity style={styles.loginBtn} onPress={() => navigation.navigate('Profile')}>
+                    <Text style={styles.loginBtnText}>Go to Login</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
     return (
-      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={styles.headerContainer}>
+                <Text style={[styles.header, { color: colors.text }]}>My Tickets</Text>
+            </View>
+
+            <FlatList
+                data={groupedOrders}
+                keyExtractor={(item) => item.order_id.toString()}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />}
+                contentContainerStyle={styles.listContainer}
+                renderItem={({ item }) => {
+                    const event = item.event;
+                    const imageSource = event?.banner_url 
+                        ? { uri: `${SERVER_BASE_URL}${event.banner_url}` } 
+                        : require('../../assets/placeholder.png');
+
+                    return (
+                        <TouchableOpacity 
+                            style={[styles.ticketCard, { backgroundColor: colors.card, opacity: item.all_used ? 0.7 : 1 }]}
+                            onPress={() => navigation.navigate('OrderDetails', { orderId: item.order_id })}
+                            activeOpacity={0.9}
+                        >
+                            {/* Top Section: Event Banner Header */}
+                            <View style={styles.ticketHeader}>
+                                <Image source={imageSource} style={styles.ticketImage} />
+                                <View style={styles.imageOverlay} />
+                                <View style={styles.headerTextContainer}>
+                                    <Text style={styles.eventTitle} numberOfLines={1}>{event?.name || 'Unknown Event'}</Text>
+                                    <Text style={styles.eventDate}>{formatTicketDate(event?.date)}</Text>
+                                </View>
+                            </View>
+
+                            {/* Middle Section: Order Details */}
+                            <View style={styles.ticketBody}>
+                                <View style={styles.detailRow}>
+                                    <View>
+                                        <Text style={[styles.label, { color: colors.subText }]}>Venue</Text>
+                                        <Text style={[styles.value, { color: colors.text }]} numberOfLines={1}>{event?.venue || 'TBA'}</Text>
+                                    </View>
+                                </View>
+                                <View style={[styles.detailRow, { marginTop: 15 }]}>
+                                    <View>
+                                        <Text style={[styles.label, { color: colors.subText }]}>Total Tickets</Text>
+                                        <Text style={[styles.value, { color: colors.text }]}>{item.total_quantity} Pass{item.total_quantity > 1 ? 'es' : ''}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={[styles.label, { color: colors.subText }]}>Order ID</Text>
+                                        <Text style={[styles.value, { color: colors.text, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }]}>
+                                            #{item.order_id.toString().padStart(6, '0')}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* The "Perforation" Line */}
+                            <View style={styles.perforationContainer}>
+                                <View style={[styles.semiCircleLeft, { backgroundColor: colors.background }]} />
+                                <View style={[styles.dashedLine, { borderColor: colors.border }]} />
+                                <View style={[styles.semiCircleRight, { backgroundColor: colors.background }]} />
+                            </View>
+
+                            {/* Bottom Section: Status & Barcode Call-to-action */}
+                            <View style={styles.ticketFooter}>
+                                <View style={[styles.statusBadge, { backgroundColor: item.all_used ? 'rgba(142,142,147,0.1)' : 'rgba(40,167,69,0.1)' }]}>
+                                    <Text style={[styles.statusText, { color: item.all_used ? '#8e8e93' : '#28a745' }]}>
+                                        {item.all_used ? 'USED' : 'VALID ENTRY'}
+                                    </Text>
+                                </View>
+                                
+                                <View style={styles.qrPrompt}>
+                                    <Text style={{ color: '#007AFF', fontWeight: 'bold', marginRight: 5 }}>View QR</Text>
+                                    <Ionicons name="qr-code-outline" size={20} color="#007AFF" />
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                }}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Ionicons name="ticket-outline" size={64} color={colors.subText} style={{ marginBottom: 15 }} />
+                        <Text style={[styles.emptyText, { color: colors.text }]}>No tickets found.</Text>
+                        <Text style={[styles.emptySubText, { color: colors.subText }]}>When you buy tickets, they will appear here.</Text>
+                        <TouchableOpacity style={styles.browseBtn} onPress={() => navigation.navigate('Home')}>
+                            <Text style={styles.browseBtnText}>Browse Events</Text>
+                        </TouchableOpacity>
+                    </View>
+                }
+            />
+        </View>
     );
-  }
-
-  const renderOrder = ({ item }: { item: Order }) => {
-      const firstTicket = item.tickets?.[0];
-      const eventName = firstTicket?.event?.name || "Event Details TBA";
-      const isPaid = item.status === 'paid';
-    
-      return (
-        <View style={[styles.orderCard, { backgroundColor: colors.card, borderLeftWidth: 5, borderLeftColor: isPaid ? '#28a745' : '#ff9500' }]}>
-          <View style={styles.orderHeader}>
-            <Text style={[styles.orderId, { color: colors.subText }]}>Order #{item.id}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: isPaid ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 149, 0, 0.1)' }]}>
-              <Text style={[styles.statusText, { color: isPaid ? '#28a745' : '#ff9500' }]}>
-                {item.status.toUpperCase()}
-              </Text>
-            </View>
-          </View>
-      
-          <View style={styles.ticketSection}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={1}>{eventName}</Text>
-              <Text style={[styles.orderTotal, { color: colors.subText }]}>Total: RM{item.total_amount}</Text>
-            </View>
-          </View>
-      
-          <TouchableOpacity 
-            style={styles.viewDetailsBtn}
-            // Consistently pass orderId so the OrderDetailsScreen can fetch it
-            onPress={() => navigation.navigate('OrderDetails', { orderId: item.id.toString() })} 
-          >
-            <Text style={styles.viewDetailsText}>View Digital Tickets</Text>
-            <Ionicons name="qr-code-outline" size={16} color="#007AFF" />
-          </TouchableOpacity>
-        </View>
-      );
-  };
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.header, { color: colors.text }]}>My Tickets</Text>
-      </View>
-
-      {/* 🚀 OFFLINE INDICATOR */}
-      {isOffline && (
-        <View style={styles.offlineBanner}>
-            <Ionicons name="cloud-offline" size={16} color="#856404" />
-            <Text style={styles.offlineText}>Offline Mode: Showing saved tickets</Text>
-        </View>
-      )}
-  
-      <FlatList
-        data={myOrders}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
-        renderItem={renderOrder}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="ticket-outline" size={80} color={isDark ? "#444" : "#ccc"} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              No tickets found.
-            </Text>
-            <Text style={[styles.emptySub, { color: colors.subText }]}>
-              Go to Marketplace to book your first event!
-            </Text>
-            <TouchableOpacity 
-                style={[styles.marketBtn, { borderColor: colors.border }]}
-                onPress={() => navigation.navigate('Marketplace')}
-            >
-                <Text style={styles.marketBtnText}>Visit Marketplace</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 20 },
-  header: { fontSize: 24, fontWeight: 'bold' },
-  offlineBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#fff3cd',
-      padding: 10,
-      borderRadius: 10,
-      marginBottom: 15,
-      justifyContent: 'center',
-      gap: 8,
-      borderWidth: 1,
-      borderColor: '#ffeeba'
-  },
-  offlineText: { color: '#856404', fontSize: 13, fontWeight: '600' },
-  orderCard: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  orderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-    paddingBottom: 8,
-  },
-  orderId: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  ticketSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  eventTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 4 },
-  orderTotal: { fontSize: 12 },
-  viewDetailsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    paddingTop: 10,
-    gap: 4,
-  },
-  viewDetailsText: { color: '#007AFF', fontWeight: '600', fontSize: 14 },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: -30,
-  },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  statusText: { fontSize: 10, fontWeight: '800' },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15 },
-  emptySub: { fontSize: 14, textAlign: 'center', marginVertical: 10, paddingHorizontal: 40 },
-  marketBtn: { marginTop: 15, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10, borderWidth: 1 },
-  marketBtnText: { color: '#007AFF', fontWeight: '600' }
+    container: { flex: 1 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    headerContainer: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 10 },
+    header: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
+    listContainer: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 10 },
+    
+    // Ticket Wallet Design
+    ticketCard: { borderRadius: 16, marginBottom: 20, overflow: 'hidden', shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 },
+    ticketHeader: { height: 100, position: 'relative', backgroundColor: '#000' },
+    ticketImage: { width: '100%', height: '100%', resizeMode: 'cover', opacity: 0.6 },
+    imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
+    headerTextContainer: { position: 'absolute', bottom: 15, left: 15, right: 15 },
+    eventTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+    eventDate: { color: '#FFF', fontSize: 13, fontWeight: '600', marginTop: 2 },
+    
+    // Middle: Details
+    ticketBody: { padding: 20 },
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    label: { fontSize: 11, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 },
+    value: { fontSize: 16, fontWeight: '800' },
+    
+    // The Perforation Line
+    perforationContainer: { flexDirection: 'row', alignItems: 'center', height: 20, overflow: 'hidden' },
+    semiCircleLeft: { width: 20, height: 20, borderRadius: 10, marginLeft: -10 },
+    dashedLine: { flex: 1, height: 1, borderWidth: 1, borderStyle: 'dashed', marginHorizontal: 5 },
+    semiCircleRight: { width: 20, height: 20, borderRadius: 10, marginRight: -10 },
+    
+    // Bottom: Status & Action
+    ticketFooter: { padding: 15, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
+    statusText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+    qrPrompt: { flexDirection: 'row', alignItems: 'center' },
+
+    // Empty/Logged Out States
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 80, paddingHorizontal: 40 },
+    emptyText: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
+    emptySubText: { fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
+    loginBtn: { backgroundColor: '#007AFF', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 25 },
+    loginBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    browseBtn: { backgroundColor: 'rgba(0,122,255,0.1)', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 25 },
+    browseBtnText: { color: '#007AFF', fontSize: 16, fontWeight: 'bold' },
 });

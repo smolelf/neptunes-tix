@@ -5,11 +5,9 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ThemeContext } from '../context/ThemeContext';
-import apiClient from '../api/client';
+import apiClient, { SERVER_BASE_URL } from '../api/client';
 import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons';
-
-const SERVER_BASE_URL = 'http://192.168.1.100:8080';
 
 interface TicketTier {
     category: string;
@@ -206,7 +204,7 @@ export default function TicketListScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    headerContainer: { paddingHorizontal: 16, paddingTop: 50, paddingBottom: 10 },
+    headerContainer: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 10 },
     header: { fontSize: 32, fontWeight: '900', marginBottom: 15, letterSpacing: -0.5 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 48, borderRadius: 12, borderWidth: 1, marginBottom: 15 },
     searchInput: { flex: 1, fontSize: 16, marginLeft: 8 },
