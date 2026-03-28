@@ -8,6 +8,8 @@ import { ThemeContext } from '../context/ThemeContext';
 import apiClient, { SERVER_BASE_URL } from '../api/client';
 import { debounce } from 'lodash';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AuthContext } from '../context/AuthContext';
 
 interface TicketTier {
     category: string;
@@ -34,6 +36,9 @@ export default function TicketListScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('All');
+
+    const { user } = useContext(AuthContext);
+    const insets = useSafeAreaInsets();
 
     const lastFetchTime = useRef<number>(0);
     const THROTTLE_MS = 30000;
@@ -120,7 +125,27 @@ export default function TicketListScreen() {
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={styles.headerContainer}>
-                <Text style={[styles.header, { color: colors.text }]}>Discover</Text>
+                <View style={[styles.customHeader, { paddingTop: Math.max(insets.top, 20) }]}>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={[styles.headerTitle, { color: colors.text }]}>
+                            {user ? `Hi, ${user.name?.split(' ')[0] || 'there'}! 👋` : 'Discover'}
+                        </Text>
+                        <Text style={[styles.headerSubtitle, { color: colors.subText }]}>
+                            Find your next experience
+                        </Text>
+                    </View>
+
+                    {/* 🚀 The Conditional Login Button */}
+                    {!user && (
+                        <TouchableOpacity 
+                            style={styles.headerLoginBtn}
+                            onPress={() => navigation.navigate('Login')}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.headerLoginText}>Sign In</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
                 
                 <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Ionicons name="search" size={20} color={colors.subText} />
@@ -204,8 +229,7 @@ export default function TicketListScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    headerContainer: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 10 },
-    header: { fontSize: 32, fontWeight: '900', marginBottom: 15, letterSpacing: -0.5 },
+    headerContainer: { paddingHorizontal: 15, paddingTop: 20, paddingBottom: 10 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 48, borderRadius: 12, borderWidth: 1, marginBottom: 15 },
     searchInput: { flex: 1, fontSize: 16, marginLeft: 8 },
     filterScroll: { marginBottom: 10, paddingBottom: 5 },
@@ -226,4 +250,37 @@ const styles = StyleSheet.create({
     stockText: { fontSize: 13, fontWeight: '600' },
     priceTag: { backgroundColor: '#e8f5e9', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
     priceText: { color: '#2e7d32', fontWeight: '800', fontSize: 15 },
+    customHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 5,
+        paddingBottom: 15,
+        backgroundColor: 'transparent',
+    },
+    headerTextContainer: {
+        flex: 1,
+    },
+    headerTitle: {
+        fontSize: 32,
+        fontWeight: '900',
+        letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+        fontSize: 14,
+        marginTop: 4,
+        fontWeight: '500',
+    },
+    headerLoginBtn: {
+        backgroundColor: 'rgba(0,122,255,0.1)', // Soft Apple-style tinted button
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        marginLeft: 15,
+    },
+    headerLoginText: {
+        color: '#007AFF',
+        fontWeight: '700',
+        fontSize: 14,
+    },
 });

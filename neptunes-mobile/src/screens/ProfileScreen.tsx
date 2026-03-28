@@ -9,8 +9,9 @@ import { ThemeContext } from '../context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import apiClient, { SERVER_BASE_URL } from '../api/client';
 
-// 🚀 Upgraded Profile Item: Horizontal layout like native settings
+// Upgraded Profile Item: Horizontal layout like native settings
 const ProfileItem = ({ icon, label, value, textColor, colors, isLast }: any) => (
   <View style={[styles.itemRow, { borderBottomColor: colors.border, borderBottomWidth: isLast ? 0 : 1 }]}>
     <View style={styles.itemLeft}>
@@ -30,9 +31,46 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   
   const [refreshing, setRefreshing] = useState(false);
-  const [avatar] = useState(user?.avatar_url || null);
+  const rawAvatarPath = user?.avatar_url;
+  const fullAvatarUrl = rawAvatarPath 
+    ? (rawAvatarPath.startsWith('http') || rawAvatarPath.startsWith('data:') 
+        ? rawAvatarPath 
+        : `${SERVER_BASE_URL}${rawAvatarPath}`)
+    : null;
   
-  // --- 🔒 UNAUTHENTICATED STATE ---
+  // 🚀 FIXED: Moved Hook ABOVE the early return!
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true; // Cleanup flag
+      
+      const safeRefresh = async () => {
+        if (user && isActive) {
+          try {
+            await refreshUser();
+          } catch (error) {
+            // Silently catch the AxiosError so it doesn't crash the UI
+            console.log("Background refresh aborted.");
+          }
+        }
+      };
+      
+      safeRefresh();
+      
+      return () => { isActive = false; }; // Cleanup if they switch tabs quickly
+    }, [])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (user) await refreshUser();
+    } catch (error) {
+       console.log("Manual refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (!user) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}>
@@ -55,19 +93,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // --- 🔓 AUTHENTICATED STATE ---
-  useFocusEffect(
-    useCallback(() => {
-      refreshUser();
-    }, [])
-  );
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refreshUser();
-    setRefreshing(false);
-  };
-
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
@@ -76,7 +101,7 @@ export default function ProfileScreen() {
         style: "destructive", 
         onPress: async () => {
           await logout();
-          navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+          navigation.replace('Home');
         } 
       }
     ]);
@@ -98,11 +123,11 @@ export default function ProfileScreen() {
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />}
         >
-            {/* 🚀 Hero Profile Header */}
+            {/* Hero Profile Header */}
             <View style={styles.profileHeader}>
                 <View style={[styles.avatarContainer, { borderColor: colors.border }]}>
-                    {avatar ? (
-                        <Image source={{ uri: avatar }} style={styles.avatar} />
+                    {fullAvatarUrl ? (
+                        <Image source={{ uri: fullAvatarUrl }} style={styles.avatar} />
                     ) : (
                         <Ionicons name="person" size={50} color={colors.subText} />
                     )}
@@ -115,7 +140,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* 🚀 Loyalty Points Card */}
+            {/* Loyalty Points Card */}
             <TouchableOpacity 
                 style={[styles.loyaltyCard, { backgroundColor: isDark ? '#2C2C2E' : '#FFD60A' }]}
                 onPress={() => navigation.navigate('PointsHistory')}
@@ -137,7 +162,7 @@ export default function ProfileScreen() {
                 </View>
             </TouchableOpacity>
 
-            {/* 🚀 Grouped Settings Card */}
+            {/* Grouped Settings Card */}
             <Text style={[styles.sectionTitle, { color: colors.subText }]}>ACCOUNT SETTINGS</Text>
             <View style={[styles.infoGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 
@@ -164,8 +189,8 @@ export default function ProfileScreen() {
 
             </View>
         
-            {/* 🚀 Admin Management Section */}
-            {(user?.role === 'admin') && (
+            {/* Admin Management Section */}
+            {(user?.role === 'agent' || user?.role === 'admin') && (
                 <>
                     <Text style={[styles.sectionTitle, { color: colors.subText }]}>MANAGEMENT</Text>
                     <View style={[styles.infoGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>

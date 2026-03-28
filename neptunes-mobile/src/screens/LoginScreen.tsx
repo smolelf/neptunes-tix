@@ -35,16 +35,7 @@ export default function LoginScreen({ route, navigation }: any) {
             const response = await apiClient.post('/login', { email, password });
             const { token } = response.data;
             await login(token);
-
-            if (targetTicket) {
-                // Return to the Discover screen and pop open the checkout modal
-                navigation.navigate('Home', { 
-                    screen: 'Marketplace', 
-                    params: { autoOpenTicket: targetTicket } 
-                });
-            } else {
-                navigation.replace('Home');
-            }
+            navigation.goBack();
         } catch (error: any) {
             Alert.alert("Login Failed", error.response?.data?.error || "Invalid credentials");
         } finally {
@@ -61,7 +52,7 @@ export default function LoginScreen({ route, navigation }: any) {
             
             {/* 🚀 Floating Back Button */}
             <TouchableOpacity 
-                style={[styles.backButton, { top: Math.max(insets.top, 20) + 10 }]} 
+                style={[styles.backButton, { top: Math.max(insets.top, 20) + 0 }]} 
                 onPress={() => navigation.goBack()}
                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
@@ -130,14 +121,6 @@ export default function LoginScreen({ route, navigation }: any) {
                                 <Text style={styles.primaryButtonText}>Sign In</Text>
                             )}
                         </TouchableOpacity>
-                        
-                        {/* Signup Link */}
-                        <View style={styles.footerRow}>
-                            <Text style={{ color: colors.subText, fontSize: 15 }}>Don't have an account? </Text>
-                            <TouchableOpacity onPress={() => navigation.navigate('Signup', { targetTicket })} disabled={isLoading}>
-                                <Text style={styles.signupLink}>Sign up</Text>
-                            </TouchableOpacity>
-                        </View>
 
                     </View>
                 </View>

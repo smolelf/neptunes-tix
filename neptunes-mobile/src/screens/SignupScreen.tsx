@@ -65,14 +65,7 @@ export default function SignupScreen({ route, navigation }: any) {
         setLoading(false);
 
         if (result.success) {
-            if (targetTicket) {
-                navigation.navigate('Home', { 
-                    screen: 'Marketplace', 
-                    params: { autoOpenTicket: targetTicket } 
-                });
-            } else {
-                navigation.replace('Home');
-            }
+            navigation.goBack();
         } else {
             Alert.alert("Signup Failed", result.error);
         }
@@ -100,7 +93,7 @@ export default function SignupScreen({ route, navigation }: any) {
 
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <ScrollView 
-                    contentContainerStyle={[styles.scrollContainer, { paddingTop: insets.top + 60 }]}
+                    contentContainerStyle={[styles.scrollContainer, { paddingTop: insets.top + 0 }]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                 >
@@ -214,14 +207,6 @@ export default function SignupScreen({ route, navigation }: any) {
                         >
                             {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>Sign Up</Text>}
                         </TouchableOpacity>
-
-                        {/* Switch to Login */}
-                        <View style={styles.footerRow}>
-                            <Text style={{ color: colors.subText, fontSize: 15 }}>Already have an account? </Text>
-                            <TouchableOpacity onPress={() => navigation.navigate('Login', { targetTicket })} disabled={loading}>
-                                <Text style={styles.loginLink}>Sign In</Text>
-                            </TouchableOpacity>
-                        </View>
 
                     </View>
                 </ScrollView>

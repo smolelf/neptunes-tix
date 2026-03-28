@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
 import { AuthContext } from '../context/AuthContext';
-import apiClient from '../api/client';
+import apiClient, { SERVER_BASE_URL } from '../api/client'; // 🚀 Added SERVER_BASE_URL
 
 export default function EditProfileScreen({ navigation }: any) {
   const { colors } = useContext(ThemeContext);
@@ -17,9 +17,10 @@ export default function EditProfileScreen({ navigation }: any) {
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState(user?.avatar_url || null);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null); // 🚀 NEW: Tracks the local file!
   const [loading, setLoading] = useState(false);
 
-  // 📸 Pick Image Logic
+  // 📸 Pick Image Logic (No more Base64!)
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -31,24 +32,39 @@ export default function EditProfileScreen({ navigation }: any) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.5, // Keep quality low to ensure Base64 string isn't too huge
-      base64: true, // 🚀 Request Base64 directly
+      quality: 0.8, // Better quality now that we use actual files!
     });
 
-    if (!result.canceled && result.assets[0].base64) {
-      // Prefix with data URI scheme for display and saving
-      setAvatar(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    if (!result.canceled && result.assets[0].uri) {
+      setSelectedImageUri(result.assets[0].uri); // Save URI for the FormData upload
+      setAvatar(result.assets[0].uri);           // Update UI preview instantly
     }
   };
 
   const handleSave = async () => {
     setLoading(true);
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('email', email);
+    if (password) formData.append('password', password);
+
+    // 🚀 Send the physical file if a new one was selected
+    if (selectedImageUri) {
+        const filename = selectedImageUri.split('/').pop() || 'avatar.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        formData.append('avatar_file', {
+            uri: selectedImageUri,
+            name: filename,
+            type: type,
+        } as any);
+    }
+
     try {
-      await apiClient.put('/my-profile', {
-        name,
-        email,
-        password: password.length > 0 ? password : undefined, // Only send if changed
-        avatar: avatar // Send the Base64 string
+      await apiClient.put('/my-profile', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       await refreshUser(); // Update global context
@@ -62,6 +78,19 @@ export default function EditProfileScreen({ navigation }: any) {
     }
   };
 
+  // 🚀 Safely render the avatar (Local URI preview vs Server URL)
+  const getAvatarSource = () => {
+    if (!avatar) return null;
+    // If it's a local file just picked, or an external http link, use it directly
+    if (avatar.startsWith('file://') || avatar.startsWith('http')) {
+      return { uri: avatar };
+    }
+    // If it's the database path (e.g., /uploads/avatars/1_123.jpg), prepend server IP
+    return { uri: `${SERVER_BASE_URL}${avatar}` };
+  };
+
+  const avatarSource = getAvatarSource();
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -72,8 +101,8 @@ export default function EditProfileScreen({ navigation }: any) {
         {/* Avatar Section */}
         <View style={styles.avatarContainer}>
           <TouchableOpacity onPress={pickImage} style={styles.avatarWrapper}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
+            {avatarSource ? (
+              <Image source={avatarSource} style={styles.avatar} />
             ) : (
               <View style={[styles.placeholderAvatar, { backgroundColor: colors.card }]}>
                 <Ionicons name="person" size={50} color={colors.subText} />

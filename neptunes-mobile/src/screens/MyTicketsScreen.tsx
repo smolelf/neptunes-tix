@@ -7,7 +7,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ThemeContext } from '../context/ThemeContext';
 import { AuthContext } from '../context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
-import apiClient, { SERVER_BASE_URL } from '../api/client';import { Ionicons } from '@expo/vector-icons';
+import apiClient, { SERVER_BASE_URL } from '../api/client';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function MyTicketScreen() {
     const navigation = useNavigation<any>();
@@ -47,33 +48,38 @@ export default function MyTicketScreen() {
         fetchMyTickets(false);
     };
 
-    // 🚀 NEW: Group the raw tickets by Order ID
+    // 🚀 FIXED: Grouping Logic now uses 'checked_in_at' from your JSON
     const groupedOrders = useMemo(() => {
         const groups: Record<number, any> = {};
         
-        rawTickets.forEach(t => {
-            const orderId = t.order_id;
+        rawTickets.forEach((t: any) => {
+            const orderId = t.order_id || t.OrderID;
+            const eventInfo = t.event || t.Event;
+            const orderInfo = t.order || t.Order;
+            
+            // Safely force statuses to lowercase
+            const ticketStatus = (t.status || t.Status || '').toLowerCase();
+            const orderStatus = (orderInfo?.status || orderInfo?.Status || '').toLowerCase();
+
             if (!groups[orderId]) {
                 groups[orderId] = {
                     order_id: orderId,
-                    event: t.Event || t.event, // Assuming all tickets in an order belong to the same event
+                    event: eventInfo,
                     tickets: [],
                     total_quantity: 0,
-                    // We check if ALL tickets in this order are used
-                    all_used: true 
+                    all_used: true,
+                    is_unpaid: t.is_sold === false
                 };
             }
             groups[orderId].tickets.push(t);
             groups[orderId].total_quantity += 1;
             
-            // If even one ticket is unused, the whole order is not "all_used"
-            const isTicketUsed = t.is_scanned || t.status === 'used';
+            const isTicketUsed = !!t.checked_in_at || ticketStatus === 'used';
             if (!isTicketUsed) {
                 groups[orderId].all_used = false;
             }
         });
 
-        // Convert to array and sort by Order ID descending (newest first)
         return Object.values(groups).sort((a: any, b: any) => b.order_id - a.order_id);
     }, [rawTickets]);
 
@@ -121,14 +127,22 @@ export default function MyTicketScreen() {
                     const imageSource = event?.banner_url 
                         ? { uri: `${SERVER_BASE_URL}${event.banner_url}` } 
                         : require('../../assets/placeholder.png');
+                    
+                    const isUnpaid = item.is_unpaid;
+                    const isUsed = item.all_used && !isUnpaid;
 
+                    // 🚀 ASSIGN COLORS & LABELS CLEANLY
+                    const badgeBg = isUnpaid ? 'rgba(255,149,0,0.1)' : (isUsed ? 'rgba(142,142,147,0.1)' : 'rgba(40,167,69,0.1)');
+                    const badgeColor = isUnpaid ? '#FF9500' : (isUsed ? '#8e8e93' : '#28a745');
+                    const badgeLabel = isUnpaid ? 'UNPAID' : (isUsed ? 'USED' : 'VALID ENTRY');
+                    
                     return (
                         <TouchableOpacity 
                             style={[styles.ticketCard, { backgroundColor: colors.card, opacity: item.all_used ? 0.7 : 1 }]}
                             onPress={() => navigation.navigate('OrderDetails', { orderId: item.order_id })}
                             activeOpacity={0.9}
                         >
-                            {/* Top Section: Event Banner Header */}
+                            {/* Top Section */}
                             <View style={styles.ticketHeader}>
                                 <Image source={imageSource} style={styles.ticketImage} />
                                 <View style={styles.imageOverlay} />
@@ -138,7 +152,7 @@ export default function MyTicketScreen() {
                                 </View>
                             </View>
 
-                            {/* Middle Section: Order Details */}
+                            {/* Middle Section */}
                             <View style={styles.ticketBody}>
                                 <View style={styles.detailRow}>
                                     <View>
@@ -167,18 +181,25 @@ export default function MyTicketScreen() {
                                 <View style={[styles.semiCircleRight, { backgroundColor: colors.background }]} />
                             </View>
 
-                            {/* Bottom Section: Status & Barcode Call-to-action */}
+                            {/* 🚀 FIXED: The Dynamic Footer now ACTUALLY uses the variables! */}
                             <View style={styles.ticketFooter}>
-                                <View style={[styles.statusBadge, { backgroundColor: item.all_used ? 'rgba(142,142,147,0.1)' : 'rgba(40,167,69,0.1)' }]}>
-                                    <Text style={[styles.statusText, { color: item.all_used ? '#8e8e93' : '#28a745' }]}>
-                                        {item.all_used ? 'USED' : 'VALID ENTRY'}
+                                <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+                                    <Text style={[styles.statusText, { color: badgeColor }]}>
+                                        {badgeLabel}
                                     </Text>
                                 </View>
                                 
-                                <View style={styles.qrPrompt}>
-                                    <Text style={{ color: '#007AFF', fontWeight: 'bold', marginRight: 5 }}>View QR</Text>
-                                    <Ionicons name="qr-code-outline" size={20} color="#007AFF" />
-                                </View>
+                                {isUnpaid ? (
+                                    <View style={styles.qrPrompt}>
+                                        <Text style={{ color: '#FF9500', fontWeight: 'bold', marginRight: 5 }}>Pay Now</Text>
+                                        <Ionicons name="card-outline" size={20} color="#FF9500" />
+                                    </View>
+                                ) : (
+                                    <View style={styles.qrPrompt}>
+                                        <Text style={{ color: '#007AFF', fontWeight: 'bold', marginRight: 5 }}>View QR</Text>
+                                        <Ionicons name="qr-code-outline" size={20} color="#007AFF" />
+                                    </View>
+                                )}
                             </View>
                         </TouchableOpacity>
                     );
@@ -227,7 +248,7 @@ const styles = StyleSheet.create({
     semiCircleRight: { width: 20, height: 20, borderRadius: 10, marginRight: -10 },
     
     // Bottom: Status & Action
-    ticketFooter: { padding: 15, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    ticketFooter: { paddingTop: 5, paddingBottom: 15, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
     statusText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
     qrPrompt: { flexDirection: 'row', alignItems: 'center' },

@@ -5,6 +5,8 @@ import (
 	"neptunes-tix/internal/domain"
 	"neptunes-tix/internal/middleware"
 	"neptunes-tix/internal/service"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -38,20 +40,6 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 	})
 
 	r.POST("/users", HandleUserRegistration(bookingSvc))
-
-	r.GET("/tickets", func(c *gin.Context) {
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-		search := c.Query("q")
-		category := c.Query("category")
-		status := c.Query("status")
-		tickets, total, err := bookingSvc.ListTickets(limit, offset, category, status == "available", search)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to fetch tickets"})
-			return
-		}
-		c.JSON(200, gin.H{"total": total, "data": tickets})
-	})
 
 	r.GET("/marketplace", func(c *gin.Context) {
 		search := c.Query("q")
@@ -207,25 +195,40 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		userAuth.PUT("/my-profile", func(c *gin.Context) {
 			userID := c.MustGet("userID").(uint)
 
-			var input struct {
-				Name     string `json:"name"`
-				Email    string `json:"email" binding:"omitempty,email"`
-				Password string `json:"password"` // 🚀 New
-				Avatar   string `json:"avatar"`   // 🚀 New (Base64)
+			// Grab standard text fields from the FormData
+			name := c.PostForm("name")
+			email := c.PostForm("email")
+			password := c.PostForm("password")
+
+			var avatarURL string
+
+			// Handle the physical file upload
+			file, err := c.FormFile("avatar_file")
+			if err == nil {
+				// Create an avatars directory if it doesn't exist
+				os.MkdirAll("./uploads/avatars", os.ModePerm)
+
+				// Generate a clean, unique filename (e.g., "1_1710000000.jpg")
+				ext := filepath.Ext(file.Filename)
+				filename := fmt.Sprintf("%d_%d%s", userID, time.Now().Unix(), ext)
+				savePath := fmt.Sprintf("./uploads/avatars/%s", filename)
+
+				if err := c.SaveUploadedFile(file, savePath); err == nil {
+					// This is the URL we save to the database!
+					avatarURL = fmt.Sprintf("/uploads/avatars/%s", filename)
+				}
 			}
 
-			if err := c.ShouldBindJSON(&input); err != nil {
-				c.JSON(400, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Pass all fields to the service
-			if err := bookingSvc.UpdateOwnProfile(userID, input.Name, input.Email, input.Password, input.Avatar); err != nil {
+			// Pass everything to your service
+			if err := bookingSvc.UpdateOwnProfile(userID, name, email, password, avatarURL); err != nil {
 				c.JSON(500, gin.H{"error": "Update failed"})
 				return
 			}
 
-			c.JSON(200, gin.H{"message": "Profile updated successfully!"})
+			c.JSON(200, gin.H{
+				"message":    "Profile updated successfully!",
+				"avatar_url": avatarURL,
+			})
 		})
 
 		userAuth.GET("/users/me", func(c *gin.Context) {
@@ -319,6 +322,20 @@ func SetupRoutes(r *gin.Engine, rawRepo any, bookingSvc *service.BookingService)
 		adminOnly := adminAuth.Group("/")
 		adminOnly.Use(middleware.AdminOnly())
 		{
+			adminOnly.GET("/admin/tickets", func(c *gin.Context) {
+				limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+				offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+				search := c.Query("q")
+				category := c.Query("category")
+				status := c.Query("status")
+				tickets, total, err := bookingSvc.ListTickets(limit, offset, category, status == "available", search)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "Failed to fetch tickets"})
+					return
+				}
+				c.JSON(200, gin.H{"total": total, "data": tickets})
+			})
+
 			adminOnly.POST("/admin/events/create", HandleCreateEvent(bookingSvc))
 			adminOnly.DELETE("/tickets/:id", HandleDeleteTicket(bookingSvc))
 			adminOnly.GET("/admin/events/:id", HandleGetEventDetails(adminRepo))
